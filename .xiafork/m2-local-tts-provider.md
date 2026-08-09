@@ -1,6 +1,6 @@
 # M2-P0 Local TTS service architecture preparation
 
-Status: provider/service-neutral preparation only. M1 still requires a human-selected winner. M2 production integration and M8 remote-host implementation have not started.
+Status: M2-P0 architecture preparation and M2-P0.5 isolated dual-adapter prototypes are complete. M1 still requires a human-selected winner. M2 production integration and M8 remote-host implementation have not started.
 
 > **M2-P0 DOES NOT expose TTS to the Internet.** It adds no endpoint, listener, model process, dependency, setting, credential, migration, or production execution path.
 
@@ -456,15 +456,88 @@ All tests use fake/mock providers, fake audio metadata, and fake transports. No 
 | Concurrency | bounded queue, ownership through queued/running/completed, one-worker ordering, no cross-client cache/result leak |
 | Consumer neutrality | no engine-specific branch in Chat/Date/Call; provider differences remain inside adapters |
 
-M2-P0 adds no runtime code, so no fake harness is checked in during this phase. The first M2-P1 contract commit should add types and fake tests before wiring a production consumer.
+M2-P0.5 checks in the isolated host contract and fake conformance harness described below. M2-P1 must still add the SullyOS-side provider/service client and a selected production process wrapper before wiring a production consumer.
 
 ## 19. Explicit non-goals
 
 - No M1 winner decision.
-- No IndexTTS2 or GPT-SoVITS production adapter.
+- No IndexTTS2 or GPT-SoVITS production process wrapper or SullyOS production registration; the M2-P0.5 adapters are isolated prototypes only.
 - No model startup, inference, benchmark, GPU use, model download, or dependency/lockfile change.
 - No production TTS default or existing behavior change.
 - No public listener, public URL, tunnel, VPN, NAT traversal, reverse proxy, account system, cloud deployment, or Internet exposure.
 - No remote mode implementation, scheduler, server deployment, credential handling, or W3-P1 takeover.
 - No IndexedDB schema/version change, migration, or backup-format extension.
+
+## 20. Dual adapter prototype implementation status (M2-P0.5)
+
+M2-P0.5 implements both candidates without selecting or registering either one. All prototype code is isolated under `extensions/xiafork/local-tts-host/`; no production module imports that directory.
+
+### Shared host contract
+
+- `contracts.ts` defines the M2-P0-aligned generic request, artifact result, capabilities, lifecycle/status, cancellation result, and sanitized adapter error codes.
+- Generic requests expose only `requestId`, `text`, `profileId`, optional `language`, optional generic `style`, and output preference.
+- Generic results contain an opaque `artifactId` plus audio metadata. Native output paths/bytes are passed only to `HostArtifactStore` and cannot escape in the consumer result.
+- `processBoundary.ts` is the controlled Python worker/sidecar seam. TypeScript adapters do not import Python model implementations or spawn Python from SullyOS consumers.
+- `baseAdapter.ts` owns lifecycle, persistent initialization, idempotent disposal, request validation, error sanitization, artifact normalization, and the truthful unsupported-cancellation response.
+
+### Profile mapping
+
+`profiles.ts` keys host-only profiles by `(engine, profileId)`, so the same logical name such as `xiazhou-default` may map differently for each adapter:
+
+- IndexTTS2 host profile: speaker reference audio and optional emotion reference/vector/text configuration.
+- GPT-SoVITS host profile: reference audio, prompt transcript/language, and the paired GPT/SoVITS checkpoint paths.
+
+Only the host registry sees these paths. A SullyOS synthesis request contains the logical profile ID, never a filesystem path, checkpoint, Python environment, CUDA setting, or engine-native object.
+
+### IndexTTS2Adapter status
+
+- Validates model directory, config path, pre-resolved auxiliary model paths, and profile inputs.
+- Initialization explicitly carries `allowDownloads: false`, matching the P0.5 no-download boundary and avoiding the inspected constructor's optional automatic model acquisition path.
+- Maps speaker reference, text, language, and verified emotion reference/vector/text controls to the injected IndexTTS2 process seam.
+- Forces `streamReturn: false`. Although the inspected `infer_generator` can yield tensors/fragments, no adapter-level artifact framing/fragment lifecycle smoke was performed.
+- Normalizes path/byte output through the artifact store and sanitizes native exceptions.
+
+### GPTSoVITSAdapter status
+
+- Validates runtime config plus profile-owned paired GPT and SoVITS checkpoints, reference audio, prompt transcript, and prompt language.
+- Initialization explicitly carries `allowDownloads: false`.
+- Maps target text/language, reference audio, transcript/language, and paired checkpoints to the injected persistent process seam.
+- Forces `streamingMode: false` and `returnFragment: false`. The inspected engine supports conditional fragment/stream modes, but the prototype has not validated model-version-dependent framing or quality behavior.
+- Does not advertise a generic per-request emotion capability; style differences remain profile/adapter concerns.
+
+### Capability facts
+
+| Prototype capability | IndexTTS2Adapter | GPTSoVITSAdapter |
+| --- | --- | --- |
+| Artifact output | true | true |
+| Streaming output | false (unverified at adapter level) | false (engine conditional; adapter unverified) |
+| Request cancellation | false | false |
+| Reference audio | true | true |
+| Prompt transcript | false | true |
+| Generic per-request emotion | true | false |
+| Persistent process/model | true | true |
+| Warmup API | false | false |
+| Remote service | false | false |
+| Max inferred concurrency | 1 | 1 |
+
+`cancel()` returns `unsupported`; it never kills the shared process. A future service client may suppress stale results independently, but that is not represented as engine cancellation.
+
+### Validation and smoke status
+
+- `scripts/m2-local-tts-host-adapters.test.ts` exposes the isolated suite to the repository's existing Vitest include paths.
+- Shared fake-engine conformance covers initialization, unavailable initialization, profile isolation, native request mapping, artifact normalization, sanitized errors, invalid results/config, request ID preservation, path non-leakage, truthful capabilities, unsupported cancellation, and idempotent disposal.
+- No real model smoke was run. Both candidates would require loading large model runtimes/GPU state and a concrete controlled Python process implementation; this was optional and was safely skipped rather than changing either candidate environment.
+- The repository-wide TypeScript check still reports pre-existing unrelated errors in official application/tooling files. A strict source-only check for all new host prototype modules passes.
+
+### Remaining M2-P1 work
+
+After the user selects the M1 winner:
+
+1. Implement and test the controlled Python process wrapper for only the selected adapter, including temp/artifact cleanup and process health.
+2. Perform one selected-engine local smoke with model/environment ownership and GPU lifecycle controls.
+3. Revalidate capabilities from observed wrapper behavior; do not enable streaming or cancellation without dedicated validation.
+4. Add the SullyOS-side `LocalTTSProvider`, service client, loopback transport, fallback policy hook, and persistence review from section 16.
+5. Register only the selected adapter and consolidate Call through the common router before enabling any Settings/Message/Date/Call path.
+
+M8 remote transport remains future and unimplemented.
 

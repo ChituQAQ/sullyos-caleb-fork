@@ -120,7 +120,7 @@ describe('Xiafork structured handoff', () => {
 
     expect(summary).toContain('Product: M1 in_progress_external');
     expect(summary).toContain('Workflow: W3 in_progress');
-    expect(summary).toContain('Last work: M2-P0');
+    expect(summary).toContain('Last work: M2-P0.5');
     expect(summary).toContain('HEAD: 4444444444444444444444444444444444444444');
   });
 });

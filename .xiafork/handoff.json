@@ -6,23 +6,25 @@
     "repository": "ChituQAQ/sullyos-caleb-fork",
     "kind": "long-term upstream-compatible fork"
   },
-  "generatedAt": "2026-08-09T20:13:51.761Z",
+  "generatedAt": "2026-08-09T20:35:28.691Z",
   "git": {
     "canonicalBranch": "master",
-    "refreshBranch": "chore/m2-local-tts-provider-prep",
-    "headAtRefresh": "1ee81ff2d36db4a37a3d0c21c560edbb908746e1",
-    "originMasterAtRefresh": "1ee81ff2d36db4a37a3d0c21c560edbb908746e1",
+    "refreshBranch": "feat/m2-dual-tts-adapters",
+    "headAtRefresh": "49cbcae1d7d67164384c9e0a7067e2f67b1deebb",
+    "originMasterAtRefresh": "49cbcae1d7d67164384c9e0a7067e2f67b1deebb",
     "upstreamMaster": "44bdf88dc35eb2f5edee9ce56b92716a3fca76df",
     "workingTreeCleanAtRefresh": false,
     "expectedCleanAfterCommit": true,
     "handoffCommit": {
       "resolution": "single-focused-descendant",
-      "baseCommit": "1ee81ff2d36db4a37a3d0c21c560edbb908746e1",
+      "baseCommit": "49cbcae1d7d67164384c9e0a7067e2f67b1deebb",
       "commitsAhead": 1,
-      "subject": "chore: prepare local tts service architecture",
+      "subject": "feat: prototype local tts engine adapters",
       "allowedPaths": [
         ".xiafork/handoff.json",
         ".xiafork/m2-local-tts-provider.md",
+        "extensions/",
+        "scripts/m2-local-tts-host-adapters.test.ts",
         "scripts/xiafork-handoff.test.ts"
       ]
     }
@@ -38,6 +40,11 @@
         "id": "M2-P0",
         "status": "preparation_complete",
         "summary": "Provider/service-neutral local TTS and future private voice-cloud architecture preparation; no production integration or remote service"
+      },
+      {
+        "id": "M2-P0.5",
+        "status": "preparation_complete",
+        "summary": "Isolated host-side IndexTTS2 and GPT-SoVITS adapter prototypes with shared contract, profile resolution, process seam, and fake conformance tests; neither adapter is selected or production-registered"
       },
       {
         "id": "M3-P0",
@@ -69,7 +76,7 @@
       {
         "id": "M2",
         "status": "blocked",
-        "summary": "Unified local TTS provider abstraction; production remains blocked pending the M1 human winner, while M2-P0 preparation is complete"
+        "summary": "Unified local TTS provider abstraction; production remains blocked pending the M1 human winner, while M2-P0 architecture and M2-P0.5 isolated dual-adapter prototypes are complete"
       },
       {
         "id": "M3",
@@ -141,6 +148,11 @@
   },
   "lastCompletedWork": [
     {
+      "id": "M2-P0.5",
+      "status": "prototype_complete",
+      "summary": "Implemented isolated host-side IndexTTS2 and GPT-SoVITS adapter prototypes, logical profile resolution, a controlled process seam, artifact normalization, truthful capabilities, and shared fake conformance tests without production wiring"
+    },
+    {
       "id": "M2-P0",
       "status": "preparation_complete",
       "summary": "Audited official TTS paths and documented a provider/service/transport-neutral contract, adapter difference map, compatibility rules, tests, and future private voice-cloud architecture without changing production behavior"
@@ -195,6 +207,18 @@
       "result": "pass",
       "files": 1,
       "cases": 10
+    },
+    {
+      "command": ".\\node_modules\\.bin\\vitest.cmd run scripts/m2-local-tts-host-adapters.test.ts",
+      "result": "pass",
+      "files": 1,
+      "cases": 17
+    },
+    {
+      "command": "node node_modules/typescript/bin/tsc --noEmit --strict --skipLibCheck --target ES2020 --module ESNext --moduleResolution bundler --lib ES2022,DOM <M2-P0.5 source files>",
+      "result": "pass",
+      "files": 6,
+      "cases": 0
     }
   ],
   "externalWork": [
@@ -225,6 +249,9 @@
     "Git status and commit history are authoritative; this handoff is navigation metadata.",
     "M3-P0 and M3-P1 are preparatory work only and do not mean M3 production is complete.",
     "M2-P0 provider/service-neutral preparation is complete; M2 production remains blocked and not started until the M1 winner is selected by the user.",
+    "M2-P0.5 isolated dual-adapter prototypes are complete under extensions/xiafork/local-tts-host; neither candidate is selected, production-registered, or imported by SullyOS consumers.",
+    "M2-P0.5 real-model smoke tests were safely skipped: no controlled production process wrapper exists yet, and loading either candidate would modify runtime/GPU state without adding contract-test coverage.",
+    "The repository-wide TypeScript check continues to report unrelated pre-existing errors outside M2-P0.5; all new host prototype source files pass an isolated strict TypeScript check.",
     "Future private Xia Yizhou voice-cloud compatibility is documented in .xiafork/m2-local-tts-provider.md; no public or remote TTS service, endpoint, credential, or network exposure was implemented.",
     "No SullyOS runtime success is asserted for the external TTS evaluation.",
     "W1 includes AUTOPILOT_STALL_WATCHDOG: 15 minutes without observable progress triggers a read-only self-check, not a task timeout.",
