@@ -15,6 +15,10 @@ import { cachedCall as _cachedCall, invalidate as _invalidateCache, clearAll as 
 import { DB } from '../utils/db';
 import { getProxyWorkerUrl, DEFAULT_PROXY_WORKER, PROXY_WORKER_CHANGED_EVENT } from '../utils/proxyWorker';
 import type { PostProcessMusicHooks } from '../utils/applyAssistantPostProcessing';
+import { getLocalTrackBlob } from '../utils/localMusic/library';
+import { HtmlAudioPlaybackEngine, PlaybackRequestGate, nextQueueIndex, type PlaybackEngineState } from '../utils/localMusic/playbackEngine';
+import type { LyricsDocument, NowPlayingState, PlaybackCapability } from '../utils/localMusic/types';
+import { createNowPlayingState } from '../utils/localMusic/togetherListening';
 
 /* ───────────── 类型 ───────────── */
 export type MusicQuality = 'standard' | 'higher' | 'exhigh' | 'lossless' | 'hires';
@@ -48,9 +52,20 @@ export interface Song {
   localLyrics?: string;
   /** Manual timestamps (seconds) per visible lyric line — overrides auto distribution. */
   lyricLineTimings?: number[];
+  /** Xiafork app-owned local-media record. Never contains a source path or URI. */
+  localLibraryTrackId?: string;
+  localLyricsDocument?: LyricsDocument;
+  localPlaybackCapability?: PlaybackCapability;
+  originalFilename?: string;
+  albumArtist?: string;
+  trackNumber?: number;
+  discNumber?: number;
+  sourceFormat?: string;
+  codec?: string;
+  container?: string;
 }
 
-export interface LyricLine { t: number; text: string; }
+export interface LyricLine { t?: number; endTime?: number; text: string; }
 
 export interface NeteaseProfile {
   userId: number;
@@ -155,6 +170,8 @@ export interface MusicPlaybackSnapshot {
   listeningTogetherWith: string[];
   cfg: MusicCfg;
   recentTrackChange?: RecentTrackChange | null;
+  nowPlaying: NowPlayingState | null;
+  togetherListeningEnabled: boolean;
 }
 let __musicPlaybackSnapshot: MusicPlaybackSnapshot | null = null;
 export const loadMusicPlaybackSnapshot = (): MusicPlaybackSnapshot | null => __musicPlaybackSnapshot;
@@ -196,7 +213,7 @@ export const parseLyric = (txt: string): LyricLine[] => {
     const text = m[4].trim(); if (!text) continue;
     out.push({ t: mm * 60 + ss + ms / 1000, text });
   }
-  out.sort((a, b) => a.t - b.t);
+  out.sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
   return out;
 };
 
@@ -319,11 +336,14 @@ interface MusicContextType {
   progress: number;
   duration: number;
   loadingSong: boolean;
+  playbackState: PlaybackEngineState;
+  volume: number;
 
   // 歌词
   lyric: LyricLine[];
   tlyric: LyricLine[];
   activeLyricIdx: number;
+  lyricsKind: LyricsDocument['kind'];
 
   // 用户
   profile: NeteaseProfile | null;
@@ -335,6 +355,8 @@ interface MusicContextType {
   nextSong: () => void;
   prevSong: () => void;
   seek: (pct: number) => void;
+  seekSeconds: (seconds: number) => void;
+  setVolume: (volume: number) => void;
 
   // 播放模式 & 喜欢
   playMode: PlayMode;
@@ -350,6 +372,9 @@ interface MusicContextType {
   clearListeningPartners: () => void;
   /** 最近一次一起听途中换歌的记录（供 prompt 注入"察觉换歌"，不触发主动消息） */
   recentTrackChange: RecentTrackChange | null;
+  togetherListeningEnabled: boolean;
+  setTogetherListeningEnabled: (enabled: boolean) => void;
+  nowPlaying: NowPlayingState | null;
 
   // toast 转发 (解耦)
   toast: (msg: string, type?: 'info' | 'success' | 'error') => void;
@@ -439,20 +464,24 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // 播放
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const engineRef = useRef<HtmlAudioPlaybackEngine | null>(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [loadingSong, setLoadingSong] = useState(false);
+  const [playbackState, setPlaybackState] = useState<PlaybackEngineState>('idle');
+  const [volume, setVolumeState] = useState(1);
 
   // 歌词
   const [lyric, setLyric] = useState<LyricLine[]>([]);
   const [tlyric, setTlyric] = useState<LyricLine[]>([]);
+  const [lyricsKind, setLyricsKind] = useState<LyricsDocument['kind']>('none');
   const activeLyricIdx = useMemo(() => {
-    if (!lyric.length) return -1;
+    if (lyricsKind !== 'synced' || !lyric.length) return -1;
     let i = 0;
-    for (let k = 0; k < lyric.length; k++) if (lyric[k].t <= progress) i = k; else break;
+    for (let k = 0; k < lyric.length; k++) if ((lyric[k].t ?? Infinity) <= progress) i = k; else break;
     return i;
-  }, [lyric, progress]);
+  }, [lyric, lyricsKind, progress]);
 
   // toast 转发
   const toastHandlerRef = useRef<(msg: string, type?: 'info' | 'success' | 'error') => void>(() => {});
@@ -504,12 +533,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   //   - 网易云歌 → 走 likelist API
   //   - 本地歌 → 在 localAlbum 里就算喜欢，不在就不喜欢；toggle = add/remove
   const liked = !!current && (
-    current.local
+    current.localLibraryTrackId ? true : current.local
       ? localAlbumSongs.some(s => s.id === current.id)
       : likedSet.has(current.id)
   );
   const toggleLike = useCallback(async () => {
     if (!current) return;
+    if (current.localLibraryTrackId) {
+      toast('这首歌已在本地曲库中', 'info');
+      return;
+    }
     // ── 本地歌：toggle from album ──
     if (current.local) {
       const inAlbum = localAlbumSongs.some(s => s.id === current.id);
@@ -544,6 +577,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // 一起听 - char 加入后在 miniPlayer / 播放页显示徽标；切歌 / 结束自动清空
   const [listeningTogetherWith, setListeningTogetherWith] = useState<string[]>([]);
+  const [togetherListeningEnabled, setTogetherListeningEnabled] = useState(false);
   const addListeningPartner = useCallback((charId: string) => {
     setListeningTogetherWith(prev => prev.includes(charId) ? prev : [...prev, charId]);
   }, []);
@@ -586,40 +620,35 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // 初始化 audio（仅 Provider 生命周期创建一次）
   useEffect(() => {
-    const a = new Audio();
-    a.preload = 'metadata';
-    // 注意: 不要设置 crossOrigin — NetEase CDN 没有 CORS 头，会变成静默加载失败
-    audioRef.current = a;
-
-    const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
-    const onTime = () => setProgress(a.currentTime);
-    const onMeta = () => setDuration(a.duration || 0);
-    // 播放出错 → 清掉 playing 状态 + 清掉"一起听"伙伴（防止 UI 卡在残留状态）
-    const onErr = () => { setPlaying(false); setListeningTogetherWith([]); toast('播放失败', 'error'); };
-    const onEnd = () => { endedHandlerRef.current(); };
-
-    a.addEventListener('play', onPlay);
-    a.addEventListener('pause', onPause);
-    a.addEventListener('timeupdate', onTime);
-    a.addEventListener('loadedmetadata', onMeta);
-    a.addEventListener('error', onErr);
-    a.addEventListener('ended', onEnd);
+    const engine = new HtmlAudioPlaybackEngine();
+    engineRef.current = engine;
+    audioRef.current = engine.element;
+    const unsubscribe = engine.subscribe(event => {
+      setPlaybackState(event.state);
+      setPlaying(event.state === 'playing');
+      setLoadingSong(event.state === 'loading');
+      setProgress(event.positionSeconds);
+      setDuration(event.durationSeconds);
+      if (event.state === 'error') {
+        setListeningTogetherWith([]);
+        toast(event.error || '播放失败', 'error');
+      }
+      if (event.state === 'ended') endedHandlerRef.current();
+    });
 
     return () => {
-      a.removeEventListener('play', onPlay);
-      a.removeEventListener('pause', onPause);
-      a.removeEventListener('timeupdate', onTime);
-      a.removeEventListener('loadedmetadata', onMeta);
-      a.removeEventListener('error', onErr);
-      a.removeEventListener('ended', onEnd);
-      try { a.pause(); a.src = ''; } catch {}
+      unsubscribe();
+      engine.dispose();
+      engineRef.current = null;
+      audioRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 播放单曲
+  const playRequestGateRef = useRef(new PlaybackRequestGate());
   const playSong = useCallback(async (song: Song, opts: { alsoSetQueue?: boolean; replaceQueue?: Song[]; startIdx?: number } = {}) => {
+    const requestId = playRequestGateRef.current.begin();
     const { alsoSetQueue = true, replaceQueue, startIdx } = opts;
 
     if (replaceQueue) {
@@ -636,7 +665,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
 
-    setLoadingSong(true); setLyric([]); setTlyric([]); setProgress(0); setDuration(0);
+    setLoadingSong(true); setPlaybackState('loading'); setLyric([]); setTlyric([]); setLyricsKind('none'); setProgress(0); setDuration(0);
     try {
       // ── Local-source branch ── 本地生成的歌（写歌 App 出歌）从 IndexedDB 取 blob
       if (song.local && song.localAssetKey) {
@@ -646,15 +675,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           | Blob
           | null;
         const blob: Blob | null = entry instanceof Blob ? entry : (entry?.blob instanceof Blob ? entry.blob : null);
+        if (!playRequestGateRef.current.isCurrent(requestId)) return;
         if (!blob) {
           toast('本地歌曲文件丢失', 'error');
           setLoadingSong(false);
           return;
         }
-        const prevSrc = a.src;
-        if (prevSrc.startsWith('blob:')) URL.revokeObjectURL(prevSrc);
-        a.src = URL.createObjectURL(blob);
-        a.play().catch(() => {});
+        engineRef.current?.loadBlob(blob);
+        engineRef.current?.play().catch(error => toast(`播放失败：${error?.message || 'runtime rejected playback'}`, 'error'));
 
         // ── 本地歌词时间分布 ──
         // MiniMax / ACE-Step 不返回带时间戳的歌词，但我们写歌时就有原文。
@@ -673,6 +701,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             if (lines.length === 0) {
               setLyric([]);
               setTlyric([]);
+              setLyricsKind('none');
               return;
             }
             // 用户手动对轴的优先用，没对过用平均分布兜底
@@ -694,6 +723,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
             setLyric(synced);
             setTlyric([]);
+            setLyricsKind('synced');
           };
           if (a.readyState >= 1 && isFinite(a.duration) && a.duration > 0) {
             distribute();
@@ -704,6 +734,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } else {
           setLyric([]);
           setTlyric([]);
+          setLyricsKind('none');
         }
 
         if ('mediaSession' in navigator) {
@@ -719,10 +750,35 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return;
       }
 
+      if (song.local && song.localLibraryTrackId) {
+        const blob = await getLocalTrackBlob(song.localLibraryTrackId);
+        if (!playRequestGateRef.current.isCurrent(requestId)) return;
+        if (!blob) throw new Error('本地媒体副本已丢失，请从曲库重新导入');
+        const document = song.localLyricsDocument || { kind: 'none', lines: [] };
+        setLyric(document.lines.map(line => ({
+          t: line.timeMs === undefined ? undefined : line.timeMs / 1000,
+          endTime: line.endTimeMs === undefined ? undefined : line.endTimeMs / 1000,
+          text: line.text,
+        })));
+        setTlyric([]);
+        setLyricsKind(document.kind);
+        engineRef.current?.loadBlob(blob);
+        engineRef.current?.play().catch(error => toast(`播放失败：${error?.message || '当前 runtime 无法解码此格式'}`, 'error'));
+        if ('mediaSession' in navigator) {
+          try {
+            (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({
+              title: song.name, artist: song.artists, album: song.album,
+            });
+          } catch {}
+        }
+        return;
+      }
+
       const [urlRes, lyricRes] = await Promise.all([
         musicApi.songUrl(cfgRef.current, song.id),
         musicApi.lyric(cfgRef.current, song.id).catch(() => null),
       ]);
+      if (!playRequestGateRef.current.isCurrent(requestId)) return;
       const url: string | null = urlRes?.data?.[0]?.url || null;
       if (!url) {
         toast(urlRes?.data?.[0]?.fee && !cfgRef.current.cookie ? '需要会员 cookie' : '暂无播放地址', 'error');
@@ -730,11 +786,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return;
       }
       const a = audioRef.current!;
-      a.src = url.replace(/^http:\/\//i, 'https://');
-      a.play().catch(() => {});
+      engineRef.current?.loadUrl(url.replace(/^http:\/\//i, 'https://'));
+      engineRef.current?.play().catch(error => toast(`播放失败：${error?.message || 'runtime rejected playback'}`, 'error'));
       if (lyricRes) {
-        setLyric(parseLyric(lyricRes?.lrc?.lyric || ''));
+        const parsedLyric = parseLyric(lyricRes?.lrc?.lyric || '');
+        setLyric(parsedLyric);
         setTlyric(parseLyric(lyricRes?.tlyric?.lyric || ''));
+        setLyricsKind(parsedLyric.length ? 'synced' : 'none');
       }
       // 媒体会话（锁屏 / 通知栏）
       if ('mediaSession' in navigator) {
@@ -761,14 +819,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const nextSong = useCallback(() => {
     const q = queueRef.current; if (!q.length) return;
     const cur = idxRef.current; if (cur < 0) return;
-    let n: number;
-    if (modeRef.current === 'shuffle' && q.length > 1) {
-      do { n = Math.floor(Math.random() * q.length); } while (n === cur);
-    } else if (modeRef.current === 'single') {
-      n = cur;
-    } else {
-      n = (cur + 1) % q.length;
-    }
+    const n = nextQueueIndex(cur, q.length, modeRef.current);
     setIdx(n); playSong(q[n], { alsoSetQueue: false });
   }, [playSong]);
 
@@ -803,9 +854,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [playSong]);
 
   const seek = useCallback((pct: number) => {
-    const a = audioRef.current; if (!a || !duration) return;
-    a.currentTime = Math.max(0, Math.min(duration, duration * pct));
+    if (!duration) return;
+    engineRef.current?.seekSeconds(duration * pct);
   }, [duration]);
+
+  const seekSeconds = useCallback((seconds: number) => engineRef.current?.seekSeconds(seconds), []);
+  const setVolume = useCallback((next: number) => {
+    const value = Math.max(0, Math.min(1, next));
+    setVolumeState(value);
+    engineRef.current?.setVolume(value);
+  }, []);
 
   // Media Session handlers (锁屏播放/暂停/上下首)
   useEffect(() => {
@@ -843,6 +901,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // 把当前播放状态写到模块级快照，供非 React 调用者（OSContext.runProactive
   // 等位于 MusicProvider 上层的代码）读取。useMusic() 在那一层用不了。
   useEffect(() => {
+    const nowPlaying: NowPlayingState | null = current?.localLibraryTrackId ? createNowPlayingState({
+      trackId: current.localLibraryTrackId, title: current.name, artist: current.artists,
+      album: current.album, durationSeconds: duration, positionSeconds: progress, isPlaying: playing,
+    }) : null;
     __musicPlaybackSnapshot = {
       current,
       playing,
@@ -851,8 +913,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       listeningTogetherWith,
       cfg,
       recentTrackChange,
+      nowPlaying,
+      togetherListeningEnabled,
     };
-  }, [current, playing, lyric, activeLyricIdx, listeningTogetherWith, cfg, recentTrackChange]);
+  }, [current, playing, progress, duration, lyric, activeLyricIdx, listeningTogetherWith, cfg, recentTrackChange, togetherListeningEnabled]);
+
+  const nowPlaying = useMemo<NowPlayingState | null>(() => current?.localLibraryTrackId ? createNowPlayingState({
+    trackId: current.localLibraryTrackId, title: current.name, artist: current.artists,
+    album: current.album, durationSeconds: duration, positionSeconds: progress, isPlaying: playing,
+  }) : null, [current, duration, progress, playing]);
 
   // 把整组 musicHooks 写到模块级 slot — useChatAI 和 instant push activeMsgRuntime 都从这里取.
   // current / addListeningPartner 变化时刷新闭包, 保证读到的是最新 React state.
@@ -957,13 +1026,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const value: MusicContextType = {
     cfg, setCfg,
     queue, setQueue, idx, current,
-    playing, progress, duration, loadingSong,
-    lyric, tlyric, activeLyricIdx,
+    playing, progress, duration, loadingSong, playbackState, volume,
+    lyric, tlyric, activeLyricIdx, lyricsKind,
     profile, refreshProfile,
-    playSong, togglePlay, nextSong, prevSong, seek,
+    playSong, togglePlay, nextSong, prevSong, seek, seekSeconds, setVolume,
     playMode, setPlayMode,
     liked, toggleLike,
     listeningTogetherWith, addListeningPartner, removeListeningPartner, clearListeningPartners,
+    togetherListeningEnabled, setTogetherListeningEnabled, nowPlaying,
     recentTrackChange,
     toast, setToastHandler,
     localAlbumSongs, addLocalSong, removeLocalSong,

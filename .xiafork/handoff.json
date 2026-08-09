@@ -6,34 +6,45 @@
     "repository": "ChituQAQ/sullyos-caleb-fork",
     "kind": "long-term upstream-compatible fork"
   },
-  "generatedAt": "2026-08-09T20:35:28.691Z",
+  "generatedAt": "2026-08-09T21:48:00.000Z",
   "git": {
     "canonicalBranch": "master",
-    "refreshBranch": "feat/m2-dual-tts-adapters",
-    "headAtRefresh": "49cbcae1d7d67164384c9e0a7067e2f67b1deebb",
-    "originMasterAtRefresh": "49cbcae1d7d67164384c9e0a7067e2f67b1deebb",
+    "refreshBranch": "feat/m4-local-music-together-listening",
+    "headAtRefresh": "50cf1e9996b0bf6510f1aaef01da761cfd9006ea",
+    "originMasterAtRefresh": "50cf1e9996b0bf6510f1aaef01da761cfd9006ea",
     "upstreamMaster": "44bdf88dc35eb2f5edee9ce56b92716a3fca76df",
     "workingTreeCleanAtRefresh": false,
     "expectedCleanAfterCommit": true,
     "handoffCommit": {
       "resolution": "single-focused-descendant",
-      "baseCommit": "49cbcae1d7d67164384c9e0a7067e2f67b1deebb",
+      "baseCommit": "50cf1e9996b0bf6510f1aaef01da761cfd9006ea",
       "commitsAhead": 1,
-      "subject": "feat: prototype local tts engine adapters",
+      "subject": "feat: add local music together-listening mvp",
       "allowedPaths": [
         ".xiafork/handoff.json",
-        ".xiafork/m2-local-tts-provider.md",
-        "extensions/",
-        "scripts/m2-local-tts-host-adapters.test.ts",
-        "scripts/xiafork-handoff.test.ts"
+        ".xiafork/m4-local-music.md",
+        "apps/MusicApp.tsx",
+        "apps/music/MusicUI.tsx",
+        "context/MusicContext.tsx",
+        "hooks/useChatAI.ts",
+        "package.json",
+        "pnpm-lock.yaml",
+        "scripts/xiafork-handoff.test.ts",
+        "utils/blobRef.ts",
+        "utils/chatPrompts.ts",
+        "utils/chatRequestPayload.localMusic.test.ts",
+        "utils/chatRequestPayload.ts",
+        "utils/context.ts",
+        "utils/localMusic/"
       ]
     }
   },
   "productRoadmap": {
-    "currentMilestone": "M1",
-    "milestoneStatus": "in_progress_external",
+    "currentMilestone": "M4",
+    "milestoneStatus": "complete",
     "completed": [
-      "M0"
+      "M0",
+      "M4"
     ],
     "preparedAhead": [
       {
@@ -85,8 +96,8 @@
       },
       {
         "id": "M4",
-        "status": "not_started",
-        "summary": "Local music together-listening MVP"
+        "status": "complete",
+        "summary": "User-authorized local music together-listening production MVP: isolated local Blob library, metadata/artwork/lyrics import, timed lyric seek, playback abstraction, NowPlayingState, and privacy-projected AI context; M1 remains unresolved"
       },
       {
         "id": "M5",
@@ -148,6 +159,11 @@
   },
   "lastCompletedWork": [
     {
+      "id": "M4",
+      "status": "complete",
+      "summary": "Implemented the user-authorized PC/web local music and Together Listening MVP while M1 remains paused for human quality optimization; Android/iOS adapter boundaries are ready but runtime tests were unavailable"
+    },
+    {
       "id": "M2-P0.5",
       "status": "prototype_complete",
       "summary": "Implemented isolated host-side IndexTTS2 and GPT-SoVITS adapter prototypes, logical profile resolution, a controlled process seam, artifact normalization, truthful capabilities, and shared fake conformance tests without production wiring"
@@ -184,6 +200,18 @@
     }
   ],
   "tests": [
+    {
+      "command": "npx vitest run utils/localMusic utils/chatRequestPayload.localMusic.test.ts utils/chatRequestPayload.trackSwitch.test.ts --reporter=dot",
+      "result": "pass",
+      "files": 7,
+      "cases": 35
+    },
+    {
+      "command": "corepack pnpm@10 run build:workers; npx vite build",
+      "result": "pass",
+      "files": 0,
+      "cases": 0
+    },
     {
       "command": ".\\node_modules\\.bin\\vitest.cmd run utils/backupCompatibility.scaffolding.test.ts",
       "result": "pass",
@@ -234,9 +262,9 @@
     "M2 production integration must not start until an explicit handoff records the human-selected TTS adapter target."
   ],
   "nextAllowedWork": [
+    "Human acceptance test of local music import, metadata/artwork/lyrics, timed-lyric seek, playback, and Together Listening context.",
     "Wait for an explicit repository handoff containing the human-selected M1 TTS winner before starting M2 production integration.",
-    "Safe repository preparation may continue only when separately authorized.",
-    "W3-P0 maintenance may continue only when separately authorized; W3-P1 guarded automatic takeover remains FUTURE and requires explicit authorization."
+    "Do not automatically start M1, M2-P1, M5, M8, or native background-media enhancements."
   ],
   "hardStops": [
     "Git state conflicts with this handoff or contains unexplained work.",
@@ -246,6 +274,11 @@
     "Continuation would exceed the W3-P0 read-only recovery boundary, implement W3-P1 automatic takeover, or start unapproved product work."
   ],
   "notes": [
+    "M4 was explicitly authorized as an independent production milestone despite unresolved M1; this does not change the M1 winner or unblock M2 production.",
+    "M4 stores catalog metadata and each audio Blob as one record in the fork-only xiafork_local_media database. It does not change official AetherOS_Data version 70, official stores, localStorage, migrations, or backup manifests.",
+    "M4 local media binaries and metadata are excluded from Official-Compatible backups and existing full-backup paths; original source files are never modified or deleted.",
+    "Together Listening is opt-in and projects only title, artist, optional album, and playing/paused state at prompt-build time. Paths, URIs, audio, artwork, lyrics, storage keys, and binary data are excluded.",
+    "PC/web implementation passes focused tests and production build. Android and iOS retain future source/playback adapter seams; runtime testing was not available from Windows.",
     "Git status and commit history are authoritative; this handoff is navigation metadata.",
     "M3-P0 and M3-P1 are preparatory work only and do not mean M3 production is complete.",
     "M2-P0 provider/service-neutral preparation is complete; M2 production remains blocked and not started until the M1 winner is selected by the user.",

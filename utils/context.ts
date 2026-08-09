@@ -490,6 +490,9 @@ export const ContextBuilder = {
         userListening: {
             songName: string;
             artists: string;
+            album?: string;
+            playbackStatus?: 'playing' | 'paused';
+            source?: 'local';
             lyricWindow: string[];      // 前2当前后2（共 ≤5 行）；可为空（没歌词）
             activeIdx: number;          // 在 lyricWindow 里的高亮位置，-1 表示没歌词
         } | null,
@@ -524,6 +527,10 @@ export const ContextBuilder = {
                 if (recentTrackSwitch && recentTrackSwitch.songName !== userListening.songName) {
                     lines.push(`（你们刚才本来在一起听《${recentTrackSwitch.songName}》— ${recentTrackSwitch.artists}，播放器切歌后那次"一起听"自然结束了。你能察觉到歌换成了现在这首；想继续陪 ${userName || '对方'} 听下去就在回复里自然接上并重新加入，不想也不必勉强，顺其自然。）`);
                 }
+            }
+            if (userListening.source === 'local') {
+                if (userListening.album) lines.push(`专辑：${userListening.album}`);
+                lines.push(`本地播放器状态：${userListening.playbackStatus === 'playing' ? '正在播放' : '已暂停'}。这是用户明确开启后共享的安全 metadata；你无法访问音频、文件路径、封面或歌词。`);
             }
             if (userListening.lyricWindow.length > 0) {
                 lines.push(`当前播放到（>> 标记正在播放这一行）:`);

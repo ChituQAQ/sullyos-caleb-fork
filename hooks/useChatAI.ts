@@ -587,6 +587,8 @@ export const useChatAI = ({
                         listeningTogetherWith: deps.music.listeningTogetherWith,
                         cfg: deps.music.cfg,
                         recentTrackChange: deps.music.recentTrackChange,
+                        nowPlaying: deps.music.nowPlaying,
+                        togetherListeningEnabled: deps.music.togetherListeningEnabled,
                     },
                     translationConfig: deps.translationConfig,
                     htmlMode: { enabled: !!(evalChar as any).htmlModeEnabled, customPrompt: (evalChar as any).htmlModeCustomPrompt },
@@ -799,34 +801,17 @@ export const useChatAI = ({
                 contextLimit: limit,
                 realtimeConfig,
                 innerState: skipEmotionInjection ? undefined : (evolvedNarrative || undefined),
-                userListeningContext: (() => {
-                    if (music.current && music.playing && music.lyric.length > 0) {
-                        const idx = music.activeLyricIdx;
-                        if (idx >= 0) {
-                            const from = Math.max(0, idx - 2);
-                            const to = Math.min(music.lyric.length, idx + 2 + 1);
-                            const window = music.lyric.slice(from, to).map(l => l.text);
-                            return {
-                                songName: music.current.name,
-                                artists: music.current.artists,
-                                lyricWindow: window,
-                                activeIdx: idx - from,
-                            };
-                        }
-                    }
-                    if (music.current && music.playing) {
-                        return {
-                            songName: music.current.name,
-                            artists: music.current.artists,
-                            lyricWindow: [],
-                            activeIdx: -1,
-                        };
-                    }
-                    return null;
-                })(),
-                isListeningTogether: !!(music.current && music.playing && music.listeningTogetherWith.includes(char.id)),
-                musicCfg: music.cfg,
-                recentTrackChange: music.recentTrackChange,
+                musicSnapshot: {
+                    current: music.current,
+                    playing: music.playing,
+                    lyric: music.lyric,
+                    activeLyricIdx: music.activeLyricIdx,
+                    listeningTogetherWith: music.listeningTogetherWith,
+                    cfg: music.cfg,
+                    recentTrackChange: music.recentTrackChange,
+                    nowPlaying: music.nowPlaying,
+                    togetherListeningEnabled: music.togetherListeningEnabled,
+                },
                 translationConfig,
                 htmlMode: { enabled: !!(char as any).htmlModeEnabled, customPrompt: (char as any).htmlModeCustomPrompt },
                 thinkingChain: { enabled: !!(char as any).showThinkingChain, customPrompt: (char as any).thinkingChainCustomPrompt },

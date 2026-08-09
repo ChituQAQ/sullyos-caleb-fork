@@ -177,6 +177,9 @@ export const ChatPrompts = {
         userListeningContext?: {
             songName: string;
             artists: string;
+            album?: string;
+            playbackStatus?: 'playing' | 'paused';
+            source?: 'local';
             lyricWindow: string[];
             activeIdx: number;
         } | null,
@@ -216,6 +219,9 @@ export const ChatPrompts = {
         userListeningContext?: {
             songName: string;
             artists: string;
+            album?: string;
+            playbackStatus?: 'playing' | 'paused';
+            source?: 'local';
             lyricWindow: string[];
             activeIdx: number;
         } | null,

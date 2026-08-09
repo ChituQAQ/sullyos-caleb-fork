@@ -17,6 +17,7 @@
 import { useEffect, useState } from 'react';
 import { DB } from './db';
 import type { AppearancePreset } from '../types';
+import { getLocalArtworkBlob, isLocalArtworkRef, LOCAL_ARTWORK_PREFIX } from './localMusic/library';
 
 export const BLOBREF_PREFIX = 'blobref:';
 
@@ -245,17 +246,20 @@ export async function resolveBlobRefsDeep(root: unknown): Promise<void> {
  */
 export function useBlobRefUrl(value: string | undefined | null): string | undefined {
     const [url, setUrl] = useState<string | undefined>(
-        isBlobRef(value) ? undefined : (value ?? undefined)
+        isBlobRef(value) || isLocalArtworkRef(value) ? undefined : (value ?? undefined)
     );
 
     useEffect(() => {
-        if (!isBlobRef(value)) {
+        if (!isBlobRef(value) && !isLocalArtworkRef(value)) {
             setUrl(value ?? undefined);
             return;
         }
         let alive = true;
         let objUrl: string | undefined;
-        getBlobForRef(value).then(blob => {
+        const loader = isLocalArtworkRef(value)
+            ? getLocalArtworkBlob(value.slice(LOCAL_ARTWORK_PREFIX.length))
+            : getBlobForRef(value);
+        loader.then(blob => {
             if (!alive) return;
             if (blob) {
                 objUrl = URL.createObjectURL(blob);

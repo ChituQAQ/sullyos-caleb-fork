@@ -5,7 +5,7 @@ import { useMusic, musicApi, normalizeCookie, toHttps, Song } from '../context/M
 import { getProxyWorkerUrl } from '../utils/proxyWorker';
 import { DB } from '../utils/db';
 import { trackEvent } from '../utils/analytics';
-import { Gear, User as UserIcon, Crosshair, Play as PlayIcon, Pause as PauseIcon } from '@phosphor-icons/react';
+import { Gear, User as UserIcon, Crosshair, Play as PlayIcon, Pause as PauseIcon, FolderOpen, UploadSimple, Trash } from '@phosphor-icons/react';
 import {
   C, Sparkle, CrossStar, MizuHeader, SearchBar, SongRow, MiniPlayer,
   VinylDisc, GlassProgress, PlayControls, BokehBg,
@@ -13,6 +13,10 @@ import {
 } from './music/MusicUI';
 import NeteaseProfilePage from './music/NeteaseProfilePage';
 import CharVisitPage from './music/CharVisitPage';
+import { importLocalMediaFiles, localRecordToSong } from '../utils/localMusic/metadata';
+import { listLocalTracks, removeLocalTrack } from '../utils/localMusic/library';
+import type { ImportSummary, LocalMediaRecord } from '../utils/localMusic/types';
+import { lyricSeekTargetSeconds } from '../utils/localMusic/lyrics';
 
 // ------------------------- 工具 -------------------------
 const fmtTime = (s: number) => {
@@ -22,7 +26,7 @@ const fmtTime = (s: number) => {
   return `${m}:${ss.toString().padStart(2, '0')}`;
 };
 
-type View = 'search' | 'settings' | 'player' | 'profile' | 'visit_char';
+type View = 'search' | 'local' | 'settings' | 'player' | 'profile' | 'visit_char';
 
 // ========================= 主组件 =========================
 const MusicApp: React.FC = () => {
@@ -30,13 +34,14 @@ const MusicApp: React.FC = () => {
   const {
     cfg, setCfg,
     current, playing, progress, duration, loadingSong,
-    lyric, tlyric, activeLyricIdx,
-    profile, playSong, togglePlay, nextSong, prevSong, seek,
+    lyric, tlyric, activeLyricIdx, lyricsKind,
+    profile, playSong, togglePlay, nextSong, prevSong, seek, seekSeconds,
     liked, toggleLike, setToastHandler,
     listeningTogetherWith, removeListeningPartner,
     addLocalSong, removeLocalSong, localAlbumSongs,
     playMode, setPlayMode,
     regeneratingId, regeneratingStatus,
+    volume, setVolume, togetherListeningEnabled, setTogetherListeningEnabled,
   } = useMusic();
   const isCurrentRegenerating = !!current && current.id === regeneratingId;
   // 把对轴入口和单曲循环按钮移到 SubActions 里，避免散乱
@@ -106,12 +111,40 @@ const MusicApp: React.FC = () => {
   const [results, setResults] = useState<Song[]>([]);
   const [searching, setSearching] = useState(false);
   const lyricBoxRef = useRef<HTMLDivElement | null>(null);
+  const localInputRef = useRef<HTMLInputElement | null>(null);
+  const autoFollowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [autoFollowLyrics, setAutoFollowLyrics] = useState(true);
+  const [localTracks, setLocalTracks] = useState<LocalMediaRecord[]>([]);
+  const [importingLocal, setImportingLocal] = useState(false);
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
+
+  const refreshLocalLibrary = useCallback(async () => {
+    try { setLocalTracks(await listLocalTracks()); }
+    catch (error: any) { addToast(`读取本地曲库失败：${error?.message || 'unknown error'}`, 'error'); }
+  }, [addToast]);
+
+  useEffect(() => { void refreshLocalLibrary(); }, [refreshLocalLibrary]);
+
+  useEffect(() => () => {
+    if (autoFollowTimerRef.current) clearTimeout(autoFollowTimerRef.current);
+  }, []);
+
+  const suspendAutoFollow = useCallback(() => {
+    setAutoFollowLyrics(false);
+    if (autoFollowTimerRef.current) clearTimeout(autoFollowTimerRef.current);
+    autoFollowTimerRef.current = setTimeout(() => setAutoFollowLyrics(true), 5000);
+  }, []);
+
+  const resumeAutoFollow = useCallback(() => {
+    if (autoFollowTimerRef.current) clearTimeout(autoFollowTimerRef.current);
+    setAutoFollowLyrics(true);
+  }, []);
 
   // 歌词自动滚动：把 current line 对齐到滚动容器视觉中心
   // 注意 offsetTop 依赖 offsetParent，容器没 position:relative 时会跨到祖先节点、值偏大，
   // 导致 current line 被推到中心上方。改用 getBoundingClientRect 对齐，和 DOM 嵌套解耦。
   useEffect(() => {
-    if (view !== 'player') return;
+    if (view !== 'player' || !autoFollowLyrics || lyricsKind !== 'synced') return;
     const box = lyricBoxRef.current; if (!box || activeLyricIdx < 0) return;
     const el = box.querySelector<HTMLDivElement>(`[data-lyric-idx="${activeLyricIdx}"]`);
     if (!el) return;
@@ -119,7 +152,42 @@ const MusicApp: React.FC = () => {
     const elRect = el.getBoundingClientRect();
     const elTopInBox = elRect.top - boxRect.top + box.scrollTop;
     box.scrollTo({ top: elTopInBox - box.clientHeight / 2 + el.clientHeight / 2, behavior: 'smooth' });
-  }, [activeLyricIdx, view]);
+  }, [activeLyricIdx, view, autoFollowLyrics, lyricsKind]);
+
+  const handleLocalImport = useCallback(async (files: FileList | null) => {
+    if (!files?.length) return;
+    setImportingLocal(true);
+    try {
+      const summary = await importLocalMediaFiles(Array.from(files));
+      setImportSummary(summary);
+      await refreshLocalLibrary();
+      addToast(`${summary.imported} 首已导入 · ${summary.duplicates} 首重复 · ${summary.unsupported + summary.failed} 首未导入`, summary.failed ? 'error' : 'success');
+    } catch (error: any) {
+      addToast(`导入失败：${error?.message || 'unknown error'}`, 'error');
+    } finally {
+      setImportingLocal(false);
+      if (localInputRef.current) localInputRef.current.value = '';
+    }
+  }, [addToast, refreshLocalLibrary]);
+
+  const playLocalTrack = useCallback((record: LocalMediaRecord) => {
+    const songs = localTracks.map(item => localRecordToSong(item) as Song);
+    const index = localTracks.findIndex(item => item.id === record.id);
+    if (index >= 0) {
+      void playSong(songs[index], { replaceQueue: songs, startIdx: index });
+      setView('player');
+    }
+  }, [localTracks, playSong]);
+
+  const deleteLocalTrack = useCallback(async (record: LocalMediaRecord) => {
+    try {
+      await removeLocalTrack(record.id);
+      await refreshLocalLibrary();
+      addToast('已从 SullyOS 曲库移除；原始文件未修改', 'success');
+    } catch (error: any) {
+      addToast(`移除失败：${error?.message || 'unknown error'}`, 'error');
+    }
+  }, [addToast, refreshLocalLibrary]);
 
   // ── 搜索 ──
   const doSearch = useCallback(async () => {
@@ -158,6 +226,14 @@ const MusicApp: React.FC = () => {
         onClose={closeApp}
         right={
           <div className="flex items-center gap-1">
+            <button
+              onClick={() => setView('local')}
+              className="p-1.5 rounded-full transition-all"
+              style={{ color: C.primary }}
+              title="本地音乐"
+            >
+              <FolderOpen size={16} weight="bold" />
+            </button>
             <button
               onClick={() => setView('profile')}
               className="p-1.5 rounded-full transition-all"
@@ -255,6 +331,76 @@ const MusicApp: React.FC = () => {
     </div>
   );
 
+  const renderLocalLibrary = () => {
+    const songs = localTracks.map(record => localRecordToSong(record) as Song);
+    return (
+      <div className="flex flex-col h-full relative" style={{ background: `linear-gradient(180deg, #ffffff 0%, ${C.bg} 55%, ${C.bgDeep} 100%)` }}>
+        <BokehBg />
+        <MizuHeader
+          title="Local Music"
+          onBack={() => setView('search')}
+          right={<button onClick={() => localInputRef.current?.click()} disabled={importingLocal} className="p-1.5 rounded-full" style={{ color: C.primary }} title="导入音乐"><UploadSimple size={17} weight="bold" /></button>}
+        />
+        <input
+          ref={localInputRef}
+          type="file"
+          className="hidden"
+          multiple
+          accept=".mp3,.wav,.flac,.m4a,.aac,.ogg,.mp4,.lrc,audio/*,video/mp4,text/plain"
+          onChange={event => void handleLocalImport(event.currentTarget.files)}
+        />
+        <div className="relative z-10 px-4 pt-3">
+          <button onClick={() => localInputRef.current?.click()} disabled={importingLocal}
+            className="w-full rounded-2xl py-3 text-xs text-white flex items-center justify-center gap-2 disabled:opacity-60"
+            style={{ background: `linear-gradient(135deg, ${C.primary}, ${C.accent})`, boxShadow: `0 3px 18px ${C.glow}35` }}>
+            <UploadSimple size={16} /> {importingLocal ? '正在本机解析…' : '导入本地音乐 / LRC'}
+          </button>
+          <p className="text-[9px] mt-2 leading-relaxed" style={{ color: C.muted }}>
+            文件会复制到 SullyOS 专用本地存储，不上传、不改写原文件，也不进入官方备份。可一次选择同名歌曲与 .lrc。
+          </p>
+          {importSummary && (
+            <div className="mt-2 rounded-xl px-3 py-2 text-[10px] shizuku-glass" style={{ color: C.primary }}>
+              {importSummary.imported} imported · {importSummary.duplicates} duplicate · {importSummary.unsupported} unsupported · {importSummary.failed} failed
+              {importSummary.metadataFallback > 0 && <div className="mt-1" style={{ color: C.vip }}>{importSummary.metadataFallback} 首 metadata 解析失败，已安全使用文件名</div>}
+              {importSummary.items.filter(item => item.status === 'unsupported' || item.status === 'failed').slice(0, 4).map(item => (
+                <div key={item.filename} className="mt-1 truncate" style={{ color: C.danger }}>{item.filename}: {item.message}</div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 pb-24 relative z-10 shizuku-scrollbar grid grid-cols-1 md:grid-cols-2 gap-2 content-start">
+          {localTracks.length === 0 && !importingLocal && (
+            <div className="md:col-span-2 text-center py-16 text-xs" style={{ color: C.faint }}>还没有本地音乐</div>
+          )}
+          {localTracks.map((record, index) => {
+            const song = songs[index];
+            const unsupported = record.playbackCapability === 'unsupported';
+            return (
+              <div key={record.id} className="rounded-2xl p-2.5 shizuku-glass flex items-center gap-3">
+                <button className="flex-1 min-w-0 text-left" onClick={() => playLocalTrack(record)} disabled={unsupported}>
+                  <div className="text-sm truncate" style={{ color: C.text }}>{song.name}</div>
+                  <div className="text-[10px] truncate mt-0.5" style={{ color: C.muted }}>{song.artists}{song.album ? ` · ${song.album}` : ''}</div>
+                  <div className="flex gap-1.5 mt-1 flex-wrap text-[8px] uppercase" style={{ color: unsupported ? C.danger : C.faint }}>
+                    <span>{record.metadata.sourceFormat}</span>
+                    <span>{fmtTime(song.duration)}</span>
+                    <span>{record.lyrics.kind === 'synced' ? 'timed lyrics' : record.lyrics.kind === 'plain' ? 'plain lyrics' : 'no lyrics'}</span>
+                    <span>{record.playbackCapability === 'supported' ? 'playable' : record.playbackCapability}</span>
+                    {record.metadataStatus === 'fallback' && <span style={{ color: C.vip }}>filename metadata</span>}
+                  </div>
+                </button>
+                <button onClick={() => void deleteLocalTrack(record)} className="p-2 rounded-full" style={{ color: C.faint }} aria-label={`从曲库移除 ${song.name}`} title="仅移除 app 内副本"><Trash size={14} /></button>
+              </div>
+            );
+          })}
+        </div>
+        {current && <MiniPlayer name={current.name} artists={current.artists} albumPic={current.albumPic} playing={playing}
+          onTap={() => setView('player')} onPrev={prevSong} onToggle={togglePlay} onNext={nextSong}
+          userAvatar={userProfile?.avatar} userName={userProfile?.name} companions={companions}
+          onKickCompanion={removeListeningPartner} charsWithSong={charsWithSong} />}
+      </div>
+    );
+  };
+
   // ════════════════ 播放页 ════════════════
   const bitrateMap: Record<string, string> = {
     standard: '128 kbps',
@@ -270,7 +416,7 @@ const MusicApp: React.FC = () => {
       <div className="flex flex-col h-full relative"
         style={{ background: `linear-gradient(180deg, #ffffff 0%, ${C.bg} 60%, ${C.bgDeep} 100%)` }}>
         <BokehBg />
-        <MizuHeader title="Now Playing" onBack={() => setView('search')} />
+        <MizuHeader title="Now Playing" onBack={() => setView(current.localLibraryTrackId ? 'local' : 'search')} />
 
         <div className="flex-1 flex flex-col items-center px-5 pt-4 pb-3 relative z-10 overflow-hidden">
           <div className="shrink-0 mt-1 relative">
@@ -323,10 +469,31 @@ const MusicApp: React.FC = () => {
               style={{ color: C.muted, fontFamily: `'Space Grotesk','SF Mono',monospace`, letterSpacing: '0.2em' }}>
               {current.artists}
             </p>
+            {current.album && <p className="text-[10px]" style={{ color: C.faint }}>{current.album}</p>}
+            {current.localLibraryTrackId && (
+              <p className="text-[8px] uppercase tracking-wider" style={{ color: C.faint }}>
+                {[current.sourceFormat, current.codec || current.container].filter(Boolean).join(' · ')}
+              </p>
+            )}
           </section>
+
+          {current.localLibraryTrackId && (
+            <button
+              onClick={() => setTogetherListeningEnabled(!togetherListeningEnabled)}
+              className="mt-2 px-3 py-2 rounded-2xl text-[10px] text-left w-full max-w-sm shizuku-glass"
+              style={{ color: togetherListeningEnabled ? C.primary : C.muted, border: `1px solid ${togetherListeningEnabled ? C.sakura + '70' : C.faint + '35'}` }}
+              aria-pressed={togetherListeningEnabled}
+            >
+              <span className="font-semibold">{togetherListeningEnabled ? '✓ 和夏以昼一起听' : '和夏以昼一起听'}</span>
+              <span className="block mt-0.5 opacity-75">{togetherListeningEnabled ? '只在你发消息时共享歌名、歌手、专辑和播放状态' : '关闭时不会把本地播放信息加入 AI 上下文'}</span>
+            </button>
+          )}
 
           <div
             ref={lyricBoxRef}
+            onWheel={suspendAutoFollow}
+            onTouchMove={suspendAutoFollow}
+            onPointerDown={suspendAutoFollow}
             className="flex-1 w-full my-3 min-h-0 overflow-y-auto text-center scroll-smooth shizuku-scrollbar px-2"
             style={{
               maskImage: 'linear-gradient(to bottom, transparent, black 18%, black 82%, transparent)',
@@ -337,18 +504,24 @@ const MusicApp: React.FC = () => {
               <div className="pt-6 flex flex-col items-center gap-2" style={{ color: C.faint }}>
                 <Sparkle size={12} color={C.glow} />
                 <span className="text-[11px] italic tracking-wider" style={{ fontFamily: `'Noto Serif','Georgia',serif` }}>
-                  {loadingSong ? 'loading...' : 'no lyrics'}
+                  {loadingSong ? 'loading...' : '暂无歌词'}
                 </span>
               </div>
             ) : (
               <div className="space-y-4 py-8">
                 {lyric.map((l, i) => {
-                  const tr = tlyric.find(t => Math.abs(t.t - l.t) < 0.2);
+                  const tr = tlyric.find(t => t.t !== undefined && l.t !== undefined && Math.abs(t.t - l.t) < 0.2);
                   const active = i === activeLyricIdx;
                   // 关键：字号 / 字重不随 active 变 —— 变了会触发重排换行。
                   //     只让外层盒子用 transform:scale 视觉放大，不动内部文字度量。
                   return (
-                    <div key={i} data-lyric-idx={i}
+                    <button key={i} data-lyric-idx={i}
+                      type="button"
+                      disabled={lyricsKind !== 'synced' || l.t === undefined}
+                      onClick={() => {
+                        const target = lyricSeekTargetSeconds({ text: l.text, timeMs: l.t === undefined ? undefined : l.t * 1000 });
+                        if (target !== null) { seekSeconds(target); resumeAutoFollow(); }
+                      }}
                       className="transition-transform duration-300 will-change-transform"
                       style={{
                         transform: active ? 'scale(1.05)' : 'scale(1)',
@@ -406,12 +579,17 @@ const MusicApp: React.FC = () => {
                           {tr.text}
                         </div>
                       )}
-                    </div>
+                    </button>
                   );
                 })}
               </div>
             )}
           </div>
+          {!autoFollowLyrics && lyricsKind === 'synced' && (
+            <button onClick={resumeAutoFollow} className="shrink-0 mb-2 px-3 py-1.5 rounded-full text-[10px] shizuku-glass" style={{ color: C.primary }}>
+              回到当前歌词
+            </button>
+          )}
 
           <div className="w-full shrink-0 max-w-sm">
             <div className="flex justify-between items-center mb-2 px-0.5">
@@ -419,6 +597,10 @@ const MusicApp: React.FC = () => {
               <MetaChip>{fmtTime(duration)}</MetaChip>
             </div>
             <GlassProgress progress={progress} duration={duration} fmtTime={fmtTime} onSeek={seek} />
+            <label className="mt-2 flex items-center gap-2 text-[9px]" style={{ color: C.muted }}>
+              音量
+              <input aria-label="音量" type="range" min="0" max="1" step="0.05" value={volume} onChange={event => setVolume(Number(event.target.value))} className="flex-1" />
+            </label>
           </div>
 
           <div className="shrink-0 relative">
@@ -439,7 +621,7 @@ const MusicApp: React.FC = () => {
               onLike={() => { toggleLike(); trackEvent('收藏或取消收藏当前歌', { action: liked ? 'unlike' : 'like' }); }}
               showSync={!!(current.local && current.localLyrics && lyric.length > 0)}
               onSync={() => {
-                setSyncDraft(lyric.map(l => l.t));
+                setSyncDraft(lyric.map(l => l.t ?? 0));
                 setShowLyricSync(true);
                 trackEvent('打开歌词对轴面板');
               }}
@@ -557,6 +739,7 @@ const MusicApp: React.FC = () => {
   return (
     <div className="absolute inset-0 overflow-hidden">
       {view === 'search' && renderSearch()}
+      {view === 'local' && renderLocalLibrary()}
       {view === 'player' && renderPlayer()}
       {view === 'settings' && renderSettings()}
       {view === 'profile' && (

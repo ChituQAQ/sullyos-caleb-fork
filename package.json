@@ -33,6 +33,7 @@
     "@rei-standard/amsg-sw": "2.4.0-next.3",
     "ag-psd": "^31.0.2",
     "jszip": "^3.10.1",
+    "music-metadata": "11.14.0",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

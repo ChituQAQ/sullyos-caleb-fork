@@ -53,6 +53,13 @@ const injectStyles = () => {
   document.head.appendChild(style);
 };
 
+const FallbackArtwork: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <div className={`${className} flex items-center justify-center`} aria-label="默认音乐封面"
+    style={{ background: `radial-gradient(circle at 30% 25%, ${C.sakura}, transparent 36%), linear-gradient(135deg, ${C.primary}, ${C.lavender})`, color: 'white' }}>
+    <span aria-hidden style={{ fontSize: '1.5em', filter: 'drop-shadow(0 2px 5px rgba(0,0,0,.18))' }}>♫</span>
+  </div>
+);
+
 /* ══════════ 星芒 kirakira ✦ (带闪烁动画) ══════════ */
 export const Sparkle: React.FC<{ className?: string; size?: number; color?: string; delay?: number }> = ({
   className = '', size = 10, color = C.accent, delay = 0,
@@ -182,8 +189,9 @@ export const SongRow: React.FC<{
   >
     {/* 封面 — 圆角 + 水光边框 */}
     <div className="relative shrink-0">
-      <img src={resolvedAlbumPic} alt="" className="w-11 h-11 rounded-xl object-cover"
-        style={{ border: `1.5px solid ${isActive ? C.accent + '60' : C.faint + '40'}` }} />
+      {resolvedAlbumPic
+        ? <img src={resolvedAlbumPic} alt="" className="w-11 h-11 rounded-xl object-cover" style={{ border: `1.5px solid ${isActive ? C.accent + '60' : C.faint + '40'}` }} />
+        : <FallbackArtwork className="w-11 h-11 rounded-xl" />}
       {isActive && <div className="absolute -top-0.5 -right-0.5"><Sparkle size={8} color={C.glow} delay={0.3} /></div>}
     </div>
     <div className="flex-1 min-w-0 text-left">
@@ -348,8 +356,9 @@ export const MiniPlayer: React.FC<{
     <div className="flex items-center gap-3">
       {/* 封面 — 水滴圆角 */}
       <div className="relative">
-        <img src={resolvedAlbumPic} alt="" className="w-10 h-10 rounded-xl object-cover"
-          style={{ border: `1.5px solid ${C.accent}40`, opacity: regenStatus ? 0.4 : 1 }} />
+        {resolvedAlbumPic
+          ? <img src={resolvedAlbumPic} alt="" className="w-10 h-10 rounded-xl object-cover" style={{ border: `1.5px solid ${C.accent}40`, opacity: regenStatus ? 0.4 : 1 }} />
+          : <FallbackArtwork className="w-10 h-10 rounded-xl" />}
         {playing && !regenStatus && <div className="absolute -bottom-1 -right-1"><Sparkle size={6} color={C.glow} /></div>}
         {regenStatus && (
           <div className="absolute inset-0 rounded-xl flex items-center justify-center"
@@ -416,8 +425,9 @@ export const VinylDisc: React.FC<{
         boxShadow: `0 8px 32px ${C.primary}20, 0 0 0 1px ${C.glow}30`,
       }}>
       {/* 单张封面 — 完全不透明，干净清晰 */}
-      <img src={resolvedAlbumPic} alt=""
-        className="absolute inset-0 w-full h-full object-cover" />
+      {resolvedAlbumPic
+        ? <img src={resolvedAlbumPic} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        : <FallbackArtwork className="absolute inset-0 w-full h-full" />}
 
       {/* 中心标签 — 不旋转跟随，保持唱片标识 */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

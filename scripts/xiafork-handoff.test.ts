@@ -118,9 +118,9 @@ describe('Xiafork structured handoff', () => {
   it('shows a concise human-readable summary', () => {
     const summary = formatHandoffSummary(currentHandoff(), '4444444444444444444444444444444444444444');
 
-    expect(summary).toContain('Product: M1 in_progress_external');
+    expect(summary).toContain('Product: M4 complete');
     expect(summary).toContain('Workflow: W3 in_progress');
-    expect(summary).toContain('Last work: M2-P0.5');
+    expect(summary).toContain('Last work: M4');
     expect(summary).toContain('HEAD: 4444444444444444444444444444444444444444');
   });
 });

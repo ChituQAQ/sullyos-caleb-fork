@@ -29,12 +29,16 @@ import { mergeSystemMessages } from './systemMessageMerge';
 import { injectWorldbookDepthEntries, resolveWorldbookEntries } from './worldbook';
 import { normalizeTranslationLangLabel } from './translationLang';
 import { cleanApiMessages, flattenImageContentParts } from './promptMessageCleanup';
+import { getTogetherListeningContext } from './localMusic/togetherListening';
 
 export { cleanApiMessages, flattenImageContentParts } from './promptMessageCleanup';
 
 export interface UserListeningContext {
     songName: string;
     artists: string;
+    album?: string;
+    playbackStatus?: 'playing' | 'paused';
+    source?: 'local';
     lyricWindow: string[];
     activeIdx: number;
 }
@@ -114,14 +118,27 @@ export interface BuildChatPayloadResult {
 /**
  * 用 MusicPlaybackSnapshot 算 user 共听上下文 —— 与 useChatAI.ts:636–666 行为一致。
  */
-function deriveListeningFromSnapshot(
+export function deriveListeningFromSnapshot(
     snap: MusicPlaybackSnapshot | null | undefined,
     charId: string,
 ): { userListeningContext: UserListeningContext | null; isListeningTogether: boolean; musicCfg?: MusicCfg } {
     if (!snap) return { userListeningContext: null, isListeningTogether: false };
     const { current, playing, lyric, activeLyricIdx, listeningTogetherWith, cfg } = snap;
     let userListeningContext: UserListeningContext | null = null;
-    if (current && playing && lyric.length > 0) {
+    const localContext = getTogetherListeningContext(snap.togetherListeningEnabled, snap.nowPlaying);
+    if (localContext) {
+        userListeningContext = {
+            songName: localContext.title,
+            artists: localContext.artist,
+            album: localContext.album,
+            playbackStatus: localContext.status,
+            source: 'local',
+            lyricWindow: [],
+            activeIdx: -1,
+        };
+    } else if (current?.localLibraryTrackId) {
+        userListeningContext = null;
+    } else if (current && playing && lyric.length > 0) {
         const idx = activeLyricIdx;
         if (idx >= 0) {
             const from = Math.max(0, idx - 2);
@@ -143,7 +160,7 @@ function deriveListeningFromSnapshot(
             activeIdx: -1,
         };
     }
-    const isListeningTogether = !!(userListeningContext && listeningTogetherWith.includes(charId));
+    const isListeningTogether = !!(localContext || (userListeningContext && listeningTogetherWith.includes(charId)));
     return { userListeningContext, isListeningTogether, musicCfg: cfg };
 }
 
