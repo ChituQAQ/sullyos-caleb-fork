@@ -6,23 +6,22 @@
     "repository": "ChituQAQ/sullyos-caleb-fork",
     "kind": "long-term upstream-compatible fork"
   },
-  "generatedAt": "2026-08-09T07:29:40.258Z",
+  "generatedAt": "2026-08-09T12:09:19.213Z",
   "git": {
     "canonicalBranch": "master",
-    "refreshBranch": "chore/w2-windows-portability-fix",
-    "headAtRefresh": "712d9a02593120e5c6314893576a54f5f6c279ff",
-    "originMasterAtRefresh": "712d9a02593120e5c6314893576a54f5f6c279ff",
+    "refreshBranch": "chore/w1-autopilot-stall-watchdog",
+    "headAtRefresh": "8f787687ec1b89771862088ef4f24f8ac87e2eae",
+    "originMasterAtRefresh": "8f787687ec1b89771862088ef4f24f8ac87e2eae",
     "upstreamMaster": "44bdf88dc35eb2f5edee9ce56b92716a3fca76df",
     "workingTreeCleanAtRefresh": false,
     "expectedCleanAfterCommit": true,
     "handoffCommit": {
       "resolution": "single-focused-descendant",
-      "baseCommit": "712d9a02593120e5c6314893576a54f5f6c279ff",
+      "baseCommit": "8f787687ec1b89771862088ef4f24f8ac87e2eae",
       "commitsAhead": 1,
-      "subject": "chore: fix handoff helper windows portability",
+      "subject": "chore: add autopilot stall watchdog",
       "allowedPaths": [
-        "scripts/xiafork-handoff.mjs",
-        "scripts/xiafork-handoff.test.ts",
+        "AGENTS.md",
         ".xiafork/handoff.json"
       ]
     }
@@ -120,7 +119,7 @@
       {
         "id": "W1",
         "status": "established",
-        "summary": "Autonomous Execution / AUTOPILOT"
+        "summary": "Autonomous Execution / AUTOPILOT, including AUTOPILOT_STALL_WATCHDOG"
       },
       {
         "id": "W2",
@@ -203,6 +202,9 @@
   "notes": [
     "Git status and commit history are authoritative; this handoff is navigation metadata.",
     "M3-P0 and M3-P1 are preparatory work only and do not mean M3 production is complete.",
-    "No SullyOS runtime success is asserted for the external TTS evaluation."
+    "No SullyOS runtime success is asserted for the external TTS evaluation.",
+    "W1 includes AUTOPILOT_STALL_WATCHDOG: 15 minutes without observable progress triggers a read-only self-check, not a task timeout.",
+    "The watchdog must classify the state as ACTIVE, AGENT_STALL, or PROCESS_STALL and continue or safe-stop without blind reset-and-retry behavior.",
+    "W3 Automatic Agent Takeover remains FUTURE / NOT STARTED; no takeover, orchestration, session spawning, or cross-agent transfer is authorized."
   ]
 }

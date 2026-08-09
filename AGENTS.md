@@ -291,6 +291,17 @@ Product milestones use the `M` prefix. Development workflow milestones use the `
 * Stop only at the queue's declared hard boundaries or when further work requires new authority.
 * AUTOPILOT does not broaden product scope or override the technical guardrails above.
 
+#### AUTOPILOT_STALL_WATCHDOG
+
+The watchdog is an execution discipline within W1. It is not a task timeout and does not implement W3.
+
+* After 15 continuous minutes without a new tool result, meaningful stdout/stderr, file or download progress, or an observable phase change, the agent must perform one automatic read-only stall self-check.
+* `WATCHDOG=ACTIVE`: if the tool or process is still running and activity remains observable through increasing CPU time, active GPU compute or utilization, network or download progress, growing files or output, or legitimate model loading, inference, build, or test computation, do not interrupt it. Continue waiting and begin a new 15-minute watchdog interval.
+* `WATCHDOG=AGENT_STALL`: if the previous tool completed, no child process is active, no new tool call was made, and the agent is only working or thinking without observable progress, do not spin indefinitely. Continue immediately from the existing result, or emit the final report and stop if the task is complete.
+* `WATCHDOG=PROCESS_STALL`: if a child process exists but progress cannot be confirmed, wait about 3 minutes and perform one read-only recheck. If CPU, GPU, network, file, log, and status signals still show no reasonable change, safe HARD STOP and report the last completed boundary, active process, last observable progress, and suspected blocker. Do not automatically restart from the beginning.
+* Watchdog self-checks are read-only by default. Unless the original task explicitly authorizes it, the watchdog must not kill user or unknown system processes; delete caches, partial downloads, or model assets; rebuild environments; reinstall dependencies; redownload completed assets; rerun successful benchmarks; lower safety thresholds; reset, restore, or clean Git; rewrite history; modify an unauthorized project; or switch to a community fallback.
+* The watchdog's responsibility is to detect, classify, and continue or stop safely—not to reset and retry blindly. The 15-minute interval triggers diagnosis; it is not a task timeout.
+
 ### W2: Structured Repository Handoff — Complete
 
 * The repository contains machine-readable current state under `.xiafork/`.
@@ -301,4 +312,4 @@ Product milestones use the `M` prefix. Development workflow milestones use the `
 
 * A future coding agent may consume the repository handoff and continue an authorized queue automatically.
 * W3 is a coding-workflow capability, not a SullyOS user product feature.
-* W3 is not implemented by W2; do not add a daemon, orchestrator, or background service in this milestone.
+* W3 is FUTURE / NOT STARTED and is not implemented by W1, W2, or `AUTOPILOT_STALL_WATCHDOG`; do not add agent takeover, agent orchestration, automatic session spawning, automatic cross-agent transfer, a daemon, an orchestrator, or a background service in this milestone.
