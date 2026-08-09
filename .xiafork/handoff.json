@@ -6,25 +6,24 @@
     "repository": "ChituQAQ/sullyos-caleb-fork",
     "kind": "long-term upstream-compatible fork"
   },
-  "generatedAt": "2026-08-09T07:13:17.951Z",
+  "generatedAt": "2026-08-09T07:29:40.258Z",
   "git": {
     "canonicalBranch": "master",
-    "refreshBranch": "chore/w2-structured-handoff",
-    "headAtRefresh": "ac3834c96bcdc90b48451a7fdf0c704eb3a31ae5",
-    "originMasterAtRefresh": "ac3834c96bcdc90b48451a7fdf0c704eb3a31ae5",
+    "refreshBranch": "chore/w2-windows-portability-fix",
+    "headAtRefresh": "712d9a02593120e5c6314893576a54f5f6c279ff",
+    "originMasterAtRefresh": "712d9a02593120e5c6314893576a54f5f6c279ff",
     "upstreamMaster": "44bdf88dc35eb2f5edee9ce56b92716a3fca76df",
     "workingTreeCleanAtRefresh": false,
     "expectedCleanAfterCommit": true,
     "handoffCommit": {
       "resolution": "single-focused-descendant",
-      "baseCommit": "ac3834c96bcdc90b48451a7fdf0c704eb3a31ae5",
+      "baseCommit": "712d9a02593120e5c6314893576a54f5f6c279ff",
       "commitsAhead": 1,
-      "subject": "chore: add structured agent handoff",
+      "subject": "chore: fix handoff helper windows portability",
       "allowedPaths": [
-        "AGENTS.md",
-        ".xiafork/",
         "scripts/xiafork-handoff.mjs",
-        "scripts/xiafork-handoff.test.ts"
+        "scripts/xiafork-handoff.test.ts",
+        ".xiafork/handoff.json"
       ]
     }
   },
