@@ -54,6 +54,21 @@ If official importer compatibility cannot be guaranteed, provide separate export
 
 Long term, maintain golden backup fixtures for import/export compatibility tests.
 
+The audited official baseline currently opens `AetherOS_Data` at database version 70. Any change to that database version or schema requires P0 compatibility review.
+
+Every new IndexedDB store, `localStorage` key, or persisted field must declare its backup policy. For a new store, review and update together, as applicable:
+
+* the export store list
+* the store-to-backup field mapping
+* `FullBackupData` and related types
+* `DB.importFullData`
+* V2 manifest and shard handling
+* golden backup fixtures
+
+Do not add destructive migrations for Xiafork convenience. Official backup restore is currently not a globally atomic transaction, so changes must not widen its destructive restore surface without an explicit compatibility and rollback design.
+
+Until dynamic compatibility tests pass, `extensions/xiafork/` may be used only by Xiafork Extended backups. Official-Compatible backups must not depend on that sidecar. Do not assume the official importer will round-trip unknown sidecar entries or unknown top-level backup fields.
+
 ## 4. TTS Architecture Guardrail
 
 No local TTS engine has been selected yet.
@@ -74,6 +89,12 @@ LocalTTSProvider
 -> FutureAdapter
 
 Existing official providers such as Fish Audio and MiniMax must remain available unless a later task explicitly changes that requirement.
+
+The audited official `TtsProvider` is currently a closed MiniMax/Fish Audio provider set. Xiafork local TTS must enter SullyOS through a unified provider/router abstraction; do not add new provider-specific UI or application branches.
+
+`CallApp` currently contains a historical provider branch that bypasses `ttsRouter`. When a local provider is eventually added, adapt or consolidate `CallApp` into the same routing contract rather than adding another direct branch.
+
+Until the M1 winner is decided, do not hard-code GPT-SoVITS or IndexTTS2 names into SullyOS business logic. The SullyOS-facing contract should be a `LocalTTSProvider` / adapter boundary.
 
 TTS selection should be based on measured A/B results, including:
 
@@ -110,6 +131,20 @@ Work-context details must not accidentally enter relationship-oriented or person
 
 Prompt-only separation is not sufficient.
 
+`memoryScope` must be a typed data-flow property carried through message creation, request construction, asynchronous execution, and response post-processing. It must not be inferred only from a system prompt or textual instruction.
+
+A work scope must prevent personal-memory recall and writes, including these side effects:
+
+* Memory Palace writes
+* traditional auto archive
+* `CharacterProfile.memories`
+* relationship impression or progression
+* emotion and buff state
+* ambient events
+* cognitive digestion
+
+The scope contract must cover Chat, Instant Push, Call, Date, VR, and future conversation entrypoints.
+
 ## 6. Local Music Direction
 
 Local music should be developed incrementally.
@@ -126,6 +161,10 @@ Phase B:
 * Windows Now Playing / SMTC bridge
 
 Do not build Phase B before the local-file MVP proves the integration path.
+
+Do not rewrite `MusicProvider` or the existing player for the local-file MVP. Local MP3/FLAC support should first reuse the existing `Song`, `localAssetKey`, `localMimeType`, `assets` store, `addLocalSong`, and `playSong` seams.
+
+Local music catalog metadata and its audio Blob must be validated as one backup consistency unit. A backup must not preserve only the audio Blob while losing the catalog metadata needed to find and play it.
 
 ## 7. Cross-Device Direction
 
@@ -149,6 +188,8 @@ Future desktop-specific work should initially focus only on high-frequency pages
 * Work
 
 Other applications should remain compatible with the existing phone-frame interaction model unless a later milestone explicitly changes this.
+
+M8 must not rewrite `PhoneShell`. Desktop layout should live locally in the Message/Chat root and the future Work root wherever practical. Other applications should continue using the existing shell and layout by default.
 
 ## 9. Persistence Changes Require Extra Review
 
@@ -221,3 +262,15 @@ Do not prematurely:
 * break official backup semantics for convenience
 
 When uncertain, prefer the smaller and more reversible change.
+
+## 13. Agentic Tool Integration
+
+Any new built-in tool must be reviewed across all official execution paths:
+
+* the frontend parser and tool loop
+* the Instant Push classifier and pending-tool loop
+* the AMSG worker
+
+Tools with side effects must not rely only on prompt-level confirmation. Any new write-capable tool requires a code-level permission gate.
+
+When an external project or tool can be integrated through MCP, prefer MCP over adding invasive logic to the core built-in tool dispatcher.
