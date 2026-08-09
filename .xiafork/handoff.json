@@ -6,20 +6,20 @@
     "repository": "ChituQAQ/sullyos-caleb-fork",
     "kind": "long-term upstream-compatible fork"
   },
-  "generatedAt": "2026-08-09T12:09:19.213Z",
+  "generatedAt": "2026-08-09T14:36:47.315Z",
   "git": {
     "canonicalBranch": "master",
-    "refreshBranch": "chore/w1-autopilot-stall-watchdog",
-    "headAtRefresh": "8f787687ec1b89771862088ef4f24f8ac87e2eae",
-    "originMasterAtRefresh": "8f787687ec1b89771862088ef4f24f8ac87e2eae",
+    "refreshBranch": "chore/w3-external-supervisor-requirements",
+    "headAtRefresh": "20a8e1d7d8c888c7cb1d9cfee14fbc67b2aa9600",
+    "originMasterAtRefresh": "20a8e1d7d8c888c7cb1d9cfee14fbc67b2aa9600",
     "upstreamMaster": "44bdf88dc35eb2f5edee9ce56b92716a3fca76df",
     "workingTreeCleanAtRefresh": false,
     "expectedCleanAfterCommit": true,
     "handoffCommit": {
       "resolution": "single-focused-descendant",
-      "baseCommit": "8f787687ec1b89771862088ef4f24f8ac87e2eae",
+      "baseCommit": "20a8e1d7d8c888c7cb1d9cfee14fbc67b2aa9600",
       "commitsAhead": 1,
-      "subject": "chore: add autopilot stall watchdog",
+      "subject": "chore: document w3 external supervisor requirements",
       "allowedPaths": [
         "AGENTS.md",
         ".xiafork/handoff.json"
@@ -190,14 +190,14 @@
   "nextAllowedWork": [
     "Wait for an explicit repository handoff containing the M1 TTS winner before starting M2.",
     "Safe repository preparation may continue only when separately authorized.",
-    "W3 remains a future workflow improvement and is not authorized by this handoff."
+    "W3 requirements may inform future design, but W3 implementation remains FUTURE / NOT STARTED and is not authorized by this handoff."
   ],
   "hardStops": [
     "Git state conflicts with this handoff or contains unexplained work.",
     "Origin master contains an unknown concurrent update.",
     "Continuation would require force, rebase, a non-fast-forward merge, or history rewriting.",
     "Product work requires the unavailable M1 TTS winner.",
-    "Continuation would start W3 or unapproved product implementation."
+    "Continuation would implement W3 or start unapproved product implementation."
   ],
   "notes": [
     "Git status and commit history are authoritative; this handoff is navigation metadata.",
@@ -205,6 +205,11 @@
     "No SullyOS runtime success is asserted for the external TTS evaluation.",
     "W1 includes AUTOPILOT_STALL_WATCHDOG: 15 minutes without observable progress triggers a read-only self-check, not a task timeout.",
     "The watchdog must classify the state as ACTIVE, AGENT_STALL, or PROCESS_STALL and continue or safe-stop without blind reset-and-retry behavior.",
-    "W3 Automatic Agent Takeover remains FUTURE / NOT STARTED; no takeover, orchestration, session spawning, or cross-agent transfer is authorized."
+    "Known W1 limitation: a worker already stuck in an agent-side stall may be unable to invoke its own self-watchdog; the stalled Agent must never be the sole owner of stall detection and recovery.",
+    "W3 must eventually use an external supervisor with an execution lifecycle independent of the worker and must distinguish Agent liveness from task or child-process liveness using observable progress signals.",
+    "W3 replacement Agents should resume from W2 Structured Handoff plus a future durable execution checkpoint at the last safe completed boundary, without blindly repeating completed expensive work.",
+    "W3 requires future single-active-agent, lease, ownership, or equivalent protection against duplicate work and concurrent worktree writes.",
+    "W3 takeover must inherit the original authorized scope, hard stops, forbidden paths, human-only boundaries, and safety constraints; replacement never expands authority.",
+    "W3 Automatic Agent Takeover remains FUTURE / NOT STARTED; these requirements do not authorize supervisor code, takeover, orchestration, session spawning, cross-agent transfer, a daemon, or a background service."
   ]
 }

@@ -301,6 +301,7 @@ The watchdog is an execution discipline within W1. It is not a task timeout and 
 * `WATCHDOG=PROCESS_STALL`: if a child process exists but progress cannot be confirmed, wait about 3 minutes and perform one read-only recheck. If CPU, GPU, network, file, log, and status signals still show no reasonable change, safe HARD STOP and report the last completed boundary, active process, last observable progress, and suspected blocker. Do not automatically restart from the beginning.
 * Watchdog self-checks are read-only by default. Unless the original task explicitly authorizes it, the watchdog must not kill user or unknown system processes; delete caches, partial downloads, or model assets; rebuild environments; reinstall dependencies; redownload completed assets; rerun successful benchmarks; lower safety thresholds; reset, restore, or clean Git; rewrite history; modify an unauthorized project; or switch to a community fallback.
 * The watchdog's responsibility is to detect, classify, and continue or stop safely—not to reset and retry blindly. The 15-minute interval triggers diagnosis; it is not a task timeout.
+* Known limitation: W1 defines a self-watchdog contract, but it cannot guarantee that a worker already stuck in an agent-side stall can wake itself to execute that contract. If the previous tool returned, no child process is active, no new tool call occurs, and the agent remains only in a working or thinking state, an external W3 capability may be required to detect the stall.
 
 ### W2: Structured Repository Handoff — Complete
 
@@ -313,3 +314,24 @@ The watchdog is an execution discipline within W1. It is not a task timeout and 
 * A future coding agent may consume the repository handoff and continue an authorized queue automatically.
 * W3 is a coding-workflow capability, not a SullyOS user product feature.
 * W3 is FUTURE / NOT STARTED and is not implemented by W1, W2, or `AUTOPILOT_STALL_WATCHDOG`; do not add agent takeover, agent orchestration, automatic session spawning, automatic cross-agent transfer, a daemon, an orchestrator, or a background service in this milestone.
+
+#### W3 Future Requirements — External Supervision and Safe Takeover
+
+Canonical principle: **Never make the stalled agent solely responsible for detecting and recovering from its own stall.** 不能让已经卡住的 Agent 成为检测和救活自己的唯一责任方。
+
+* W3 must eventually introduce an external supervisor or watchdog whose execution lifecycle is independent of the current worker Agent. It must remain able to observe and classify the run after the worker stops producing tool calls or the Agent session itself loses the ability to advance; it must not depend on the stalled Agent voluntarily invoking its own watchdog.
+* The supervisor must distinguish **agent liveness** from **task or child-process liveness**. A lack of chat output for 15 minutes is not sufficient evidence of failure. Relevant observations may include last tool-call and tool-result timestamps, child-process existence, CPU-time deltas, GPU utilization or compute processes, network or download progress, file size or timestamp growth, log or checkpoint progress, and the current execution phase.
+* W3 should retain the W1 meanings of `WATCHDOG=ACTIVE`, `WATCHDOG=AGENT_STALL`, and `WATCHDOG=PROCESS_STALL`, while allowing the external supervisor to classify them independently when the worker cannot self-check.
+* After `WATCHDOG=AGENT_STALL` is established and no task or child process is still doing useful work, the supervisor must be able to proceed without the original Agent: preserve or read durable execution state; wake, restore, or create a replacement Agent; and let that Agent resume from W2 Structured Handoff plus a durable execution checkpoint at the last safe completed boundary. It must not blindly restart the task from its beginning.
+* The future durable execution checkpoint is finer-grained than W2's repository-level handoff. Without prescribing a schema yet, it must be able to express the task or run ID, authorized scope, current and last-completed phases, current or last tool or command, whether a child process is expected and its PID when relevant, last observable-progress time, generated artifacts, completed expensive steps, known failures, retry count, hard-stop state, next safe action, and human-only boundaries.
+* Replacement Agents must not repeat completed downloads, training, benchmarks, model loads, artifact generation, or Git work merely because prior conversation context is unavailable.
+* W3 must include a single-active-agent, lease, ownership, or equivalent concurrency safeguard. A supervisor must not launch duplicate work while the prior Agent or child process is still active; the safeguard must prevent duplicate training or downloads, double Git writes, parallel model loads, duplicate benchmarks, and two Agents modifying the same worktree.
+* Takeover must preserve the original authorized scope, hard stops, forbidden paths, human-only boundaries, and safety constraints. Replacing an Agent never grants more authority. Git and the repository contract remain authoritative.
+
+The workflow responsibility split is:
+
+* **W1 — Autonomous Execution / AUTOPILOT:** how one authorized Agent executes a multi-step queue, including self-watchdog behavior and the `ACTIVE`, `AGENT_STALL`, and `PROCESS_STALL` semantics.
+* **W2 — Structured Repository Handoff:** how a new Agent understands durable repository and project state without relying on previous conversation context.
+* **W3 — Automatic Agent Takeover:** who monitors the worker from outside, how agent-side stalls are detected when the worker cannot self-check, and how a replacement safely resumes from W2 plus an execution checkpoint without duplicating completed work or exceeding authority.
+
+These are future design requirements only. They do not select a daemon, IPC mechanism, process manager, scheduler, service, heartbeat implementation, database, or checkpoint schema, and they do not authorize W3 implementation.
