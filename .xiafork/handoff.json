@@ -1,0 +1,209 @@
+{
+  "$schema": "./handoff.schema.json",
+  "schemaVersion": 1,
+  "project": {
+    "name": "SullyOS Xiafork",
+    "repository": "ChituQAQ/sullyos-caleb-fork",
+    "kind": "long-term upstream-compatible fork"
+  },
+  "generatedAt": "2026-08-09T07:13:17.951Z",
+  "git": {
+    "canonicalBranch": "master",
+    "refreshBranch": "chore/w2-structured-handoff",
+    "headAtRefresh": "ac3834c96bcdc90b48451a7fdf0c704eb3a31ae5",
+    "originMasterAtRefresh": "ac3834c96bcdc90b48451a7fdf0c704eb3a31ae5",
+    "upstreamMaster": "44bdf88dc35eb2f5edee9ce56b92716a3fca76df",
+    "workingTreeCleanAtRefresh": false,
+    "expectedCleanAfterCommit": true,
+    "handoffCommit": {
+      "resolution": "single-focused-descendant",
+      "baseCommit": "ac3834c96bcdc90b48451a7fdf0c704eb3a31ae5",
+      "commitsAhead": 1,
+      "subject": "chore: add structured agent handoff",
+      "allowedPaths": [
+        "AGENTS.md",
+        ".xiafork/",
+        "scripts/xiafork-handoff.mjs",
+        "scripts/xiafork-handoff.test.ts"
+      ]
+    }
+  },
+  "productRoadmap": {
+    "currentMilestone": "M1",
+    "milestoneStatus": "in_progress_external",
+    "completed": [
+      "M0"
+    ],
+    "preparedAhead": [
+      {
+        "id": "M3-P0",
+        "status": "preparation_complete",
+        "summary": "Backup compatibility test plan",
+        "commit": "cd9b370d40cf23803b9974dbb72a1083f2664573"
+      },
+      {
+        "id": "M3-P1",
+        "status": "preparation_complete",
+        "summary": "Non-destructive backup compatibility scaffolding",
+        "commit": "ac3834c96bcdc90b48451a7fdf0c704eb3a31ae5"
+      }
+    ],
+    "blockedBy": [
+      "The M1 local TTS A/B result is not available in this repository."
+    ],
+    "milestones": [
+      {
+        "id": "M0",
+        "status": "complete",
+        "summary": "Official development baseline"
+      },
+      {
+        "id": "M1",
+        "status": "in_progress_external",
+        "summary": "Local TTS A/B evaluation"
+      },
+      {
+        "id": "M2",
+        "status": "blocked",
+        "summary": "Unified local TTS provider abstraction"
+      },
+      {
+        "id": "M3",
+        "status": "not_started",
+        "summary": "Official backup bidirectional compatibility"
+      },
+      {
+        "id": "M4",
+        "status": "not_started",
+        "summary": "Local music together-listening MVP"
+      },
+      {
+        "id": "M5",
+        "status": "not_started",
+        "summary": "Work Mode Lite with memory isolation"
+      },
+      {
+        "id": "M6",
+        "status": "not_started",
+        "summary": "Project/tool bridge capability"
+      },
+      {
+        "id": "M7",
+        "status": "not_started",
+        "summary": "Desktop layout for selected high-frequency pages"
+      },
+      {
+        "id": "M8",
+        "status": "not_started",
+        "summary": "Deeper cross-device capability using existing official infrastructure first"
+      },
+      {
+        "id": "M9",
+        "status": "not_started",
+        "summary": "Central server or realtime capability only if later proven necessary"
+      }
+    ]
+  },
+  "workflowRoadmap": {
+    "currentMilestone": "W2",
+    "milestoneStatus": "complete",
+    "completed": [
+      "W0",
+      "W2"
+    ],
+    "next": "W3",
+    "milestones": [
+      {
+        "id": "W0",
+        "status": "complete",
+        "summary": "Git Handoff"
+      },
+      {
+        "id": "W1",
+        "status": "established",
+        "summary": "Autonomous Execution / AUTOPILOT"
+      },
+      {
+        "id": "W2",
+        "status": "complete",
+        "summary": "Structured Repository Handoff"
+      },
+      {
+        "id": "W3",
+        "status": "not_started",
+        "summary": "Automatic Agent Takeover"
+      }
+    ]
+  },
+  "lastCompletedWork": [
+    {
+      "id": "M3-P1",
+      "summary": "Non-destructive backup compatibility scaffolding",
+      "commits": [
+        {
+          "sha": "ac3834c96bcdc90b48451a7fdf0c704eb3a31ae5",
+          "subject": "test: add backup compatibility scaffolding"
+        }
+      ]
+    },
+    {
+      "id": "M3-P0",
+      "summary": "Backup compatibility test plan",
+      "commits": [
+        {
+          "sha": "cd9b370d40cf23803b9974dbb72a1083f2664573",
+          "subject": "docs: define backup compatibility test plan"
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "command": ".\\node_modules\\.bin\\vitest.cmd run utils/backupCompatibility.scaffolding.test.ts",
+      "result": "pass",
+      "files": 1,
+      "cases": 7
+    },
+    {
+      "command": ".\\node_modules\\.bin\\vitest.cmd run utils/backupCompatibility.scaffolding.test.ts utils/backupFormat.test.ts utils/backupImportPolicy.test.ts utils/db.test.ts utils/backupIntegrity.test.ts",
+      "result": "pass",
+      "files": 5,
+      "cases": 48
+    },
+    {
+      "command": ".\\node_modules\\.bin\\vitest.cmd run scripts/xiafork-handoff.test.ts",
+      "result": "pass",
+      "files": 1,
+      "cases": 8
+    }
+  ],
+  "externalWork": [
+    {
+      "id": "M1-TTS-AB",
+      "status": "in_progress_external",
+      "summary": "Local TTS A/B evaluation is running outside the SullyOS repository; its result is unavailable to this repository handoff.",
+      "repositoryResultAvailable": false
+    }
+  ],
+  "blockers": [
+    "The M1 TTS A/B winner is unavailable to the repository handoff.",
+    "M2 must not start until an explicit handoff records the selected TTS adapter target."
+  ],
+  "nextAllowedWork": [
+    "Wait for an explicit repository handoff containing the M1 TTS winner before starting M2.",
+    "Safe repository preparation may continue only when separately authorized.",
+    "W3 remains a future workflow improvement and is not authorized by this handoff."
+  ],
+  "hardStops": [
+    "Git state conflicts with this handoff or contains unexplained work.",
+    "Origin master contains an unknown concurrent update.",
+    "Continuation would require force, rebase, a non-fast-forward merge, or history rewriting.",
+    "Product work requires the unavailable M1 TTS winner.",
+    "Continuation would start W3 or unapproved product implementation."
+  ],
+  "notes": [
+    "Git status and commit history are authoritative; this handoff is navigation metadata.",
+    "M3-P0 and M3-P1 are preparatory work only and do not mean M3 production is complete.",
+    "No SullyOS runtime success is asserted for the external TTS evaluation."
+  ]
+}

@@ -189,7 +189,7 @@ Future desktop-specific work should initially focus only on high-frequency pages
 
 Other applications should remain compatible with the existing phone-frame interaction model unless a later milestone explicitly changes this.
 
-M8 must not rewrite `PhoneShell`. Desktop layout should live locally in the Message/Chat root and the future Work root wherever practical. Other applications should continue using the existing shell and layout by default.
+M7 must not rewrite `PhoneShell`. Desktop layout should live locally in the Message/Chat root and the future Work root wherever practical. Other applications should continue using the existing shell and layout by default.
 
 ## 9. Persistence Changes Require Extra Review
 
@@ -242,10 +242,10 @@ Unless a later explicit project decision changes the order, prioritize:
 * M3: official backup bidirectional compatibility
 * M4: local music together-listening MVP
 * M5: Work Mode Lite with memory isolation
-* M6: bridge project summary
-* M7: automatic cross-device handoff
-* M8: desktop layout for selected high-frequency pages
-* M9: central server / realtime sync only if later proven necessary
+* M6: project/tool bridge capability
+* M7: desktop layout for selected high-frequency pages
+* M8: deeper cross-device capability using existing official infrastructure first
+* M9: central server / realtime only if later proven necessary
 
 Do not start multiple major milestones simultaneously.
 
@@ -274,3 +274,31 @@ Any new built-in tool must be reviewed across all official execution paths:
 Tools with side effects must not rely only on prompt-level confirmation. Any new write-capable tool requires a code-level permission gate.
 
 When an external project or tool can be integrated through MCP, prefer MCP over adding invasive logic to the core built-in tool dispatcher.
+
+## 14. Development Workflow Milestones
+
+Product milestones use the `M` prefix. Development workflow milestones use the `W` prefix. Do not mix the two roadmaps.
+
+### W0: Git Handoff — Complete
+
+* Git is the shared source of truth for coding agents.
+* Handoffs use focused, clean commits.
+* Agents must not concurrently modify the same uncommitted working tree.
+
+### W1: Autonomous Execution / AUTOPILOT — Established
+
+* An agent may execute an explicitly authorized multi-step safe queue without asking for the next instruction after each small stage.
+* Stop only at the queue's declared hard boundaries or when further work requires new authority.
+* AUTOPILOT does not broaden product scope or override the technical guardrails above.
+
+### W2: Structured Repository Handoff — Complete
+
+* The repository contains machine-readable current state under `.xiafork/`.
+* Every major autonomous handoff refreshes the semantic state and Git-derived fields.
+* The structured handoff must remain consistent with Git; Git wins if they conflict.
+
+### W3: Automatic Agent Takeover — Future
+
+* A future coding agent may consume the repository handoff and continue an authorized queue automatically.
+* W3 is a coding-workflow capability, not a SullyOS user product feature.
+* W3 is not implemented by W2; do not add a daemon, orchestrator, or background service in this milestone.

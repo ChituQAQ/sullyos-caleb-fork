@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xiafork.local/schemas/handoff.schema.json",
+  "title": "Xiafork Structured Agent Handoff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "project",
+    "generatedAt",
+    "git",
+    "productRoadmap",
+    "workflowRoadmap",
+    "lastCompletedWork",
+    "tests",
+    "externalWork",
+    "blockers",
+    "nextAllowedWork",
+    "hardStops",
+    "notes"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "project": {
+      "type": "object",
+      "required": ["name", "repository", "kind"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 }
+      }
+    },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "git": {
+      "type": "object",
+      "required": ["canonicalBranch", "refreshBranch", "headAtRefresh", "originMasterAtRefresh", "upstreamMaster", "workingTreeCleanAtRefresh", "expectedCleanAfterCommit", "handoffCommit"],
+      "properties": {
+        "canonicalBranch": { "const": "master" },
+        "refreshBranch": { "type": "string", "minLength": 1 },
+        "headAtRefresh": { "$ref": "#/$defs/sha" },
+        "originMasterAtRefresh": { "$ref": "#/$defs/sha" },
+        "upstreamMaster": { "$ref": "#/$defs/sha" },
+        "workingTreeCleanAtRefresh": { "type": "boolean" },
+        "expectedCleanAfterCommit": { "const": true },
+        "handoffCommit": {
+          "type": "object",
+          "required": ["resolution", "baseCommit", "commitsAhead", "subject", "allowedPaths"],
+          "properties": {
+            "resolution": { "const": "single-focused-descendant" },
+            "baseCommit": { "$ref": "#/$defs/sha" },
+            "commitsAhead": { "const": 1 },
+            "subject": { "type": "string", "minLength": 1 },
+            "allowedPaths": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+          }
+        }
+      }
+    },
+    "productRoadmap": { "$ref": "#/$defs/roadmap" },
+    "workflowRoadmap": { "$ref": "#/$defs/roadmap" },
+    "lastCompletedWork": { "type": "array", "items": { "type": "object" } },
+    "tests": { "type": "array", "items": { "type": "object" } },
+    "externalWork": { "type": "array", "items": { "type": "object" } },
+    "blockers": { "$ref": "#/$defs/nonEmptyStrings" },
+    "nextAllowedWork": { "$ref": "#/$defs/nonEmptyStrings" },
+    "hardStops": { "$ref": "#/$defs/nonEmptyStrings" },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "nonEmptyStrings": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "milestone": {
+      "type": "object",
+      "required": ["id", "status", "summary"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "roadmap": {
+      "type": "object",
+      "required": ["currentMilestone", "milestoneStatus", "completed", "milestones"],
+      "properties": {
+        "currentMilestone": { "type": "string", "minLength": 1 },
+        "milestoneStatus": { "type": "string", "minLength": 1 },
+        "completed": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "preparedAhead": { "type": "array", "items": { "type": "object" } },
+        "blockedBy": { "type": "array", "items": { "type": "string" } },
+        "next": { "type": "string" },
+        "milestones": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/milestone" } }
+      }
+    }
+  }
+}
