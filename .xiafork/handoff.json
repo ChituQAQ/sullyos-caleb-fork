@@ -6,29 +6,24 @@
     "repository": "ChituQAQ/sullyos-caleb-fork",
     "kind": "long-term upstream-compatible fork"
   },
-  "generatedAt": "2026-08-09T16:05:19.835Z",
+  "generatedAt": "2026-08-09T20:13:51.761Z",
   "git": {
     "canonicalBranch": "master",
-    "refreshBranch": "feat/w3-p0-external-stall-supervisor",
-    "headAtRefresh": "5c7cd613afc5721345d877c1262d0822db079613",
-    "originMasterAtRefresh": "5c7cd613afc5721345d877c1262d0822db079613",
+    "refreshBranch": "chore/m2-local-tts-provider-prep",
+    "headAtRefresh": "1ee81ff2d36db4a37a3d0c21c560edbb908746e1",
+    "originMasterAtRefresh": "1ee81ff2d36db4a37a3d0c21c560edbb908746e1",
     "upstreamMaster": "44bdf88dc35eb2f5edee9ce56b92716a3fca76df",
     "workingTreeCleanAtRefresh": false,
     "expectedCleanAfterCommit": true,
     "handoffCommit": {
       "resolution": "single-focused-descendant",
-      "baseCommit": "5c7cd613afc5721345d877c1262d0822db079613",
+      "baseCommit": "1ee81ff2d36db4a37a3d0c21c560edbb908746e1",
       "commitsAhead": 1,
-      "subject": "feat: add external stall supervisor mvp",
+      "subject": "chore: prepare local tts service architecture",
       "allowedPaths": [
-        ".gitignore",
-        "AGENTS.md",
-        ".xiafork/README.md",
         ".xiafork/handoff.json",
-        "scripts/xiafork-handoff.test.ts",
-        "scripts/xiafork-run-state.mjs",
-        "scripts/xiafork-supervisor.mjs",
-        "scripts/xiafork-supervisor.test.ts"
+        ".xiafork/m2-local-tts-provider.md",
+        "scripts/xiafork-handoff.test.ts"
       ]
     }
   },
@@ -39,6 +34,11 @@
       "M0"
     ],
     "preparedAhead": [
+      {
+        "id": "M2-P0",
+        "status": "preparation_complete",
+        "summary": "Provider/service-neutral local TTS and future private voice-cloud architecture preparation; no production integration or remote service"
+      },
       {
         "id": "M3-P0",
         "status": "preparation_complete",
@@ -69,7 +69,7 @@
       {
         "id": "M2",
         "status": "blocked",
-        "summary": "Unified local TTS provider abstraction"
+        "summary": "Unified local TTS provider abstraction; production remains blocked pending the M1 human winner, while M2-P0 preparation is complete"
       },
       {
         "id": "M3",
@@ -141,6 +141,11 @@
   },
   "lastCompletedWork": [
     {
+      "id": "M2-P0",
+      "status": "preparation_complete",
+      "summary": "Audited official TTS paths and documented a provider/service/transport-neutral contract, adapter difference map, compatibility rules, tests, and future private voice-cloud architecture without changing production behavior"
+    },
+    {
       "id": "W3-P0",
       "status": "implemented",
       "summary": "External deterministic stall watcher, durable execution checkpoint, lease foundation, recovery bundle, and read-only Supervisor Codex adapter"
@@ -202,10 +207,10 @@
   ],
   "blockers": [
     "The M1 TTS A/B winner is unavailable to the repository handoff.",
-    "M2 must not start until an explicit handoff records the selected TTS adapter target."
+    "M2 production integration must not start until an explicit handoff records the human-selected TTS adapter target."
   ],
   "nextAllowedWork": [
-    "Wait for an explicit repository handoff containing the M1 TTS winner before starting M2.",
+    "Wait for an explicit repository handoff containing the human-selected M1 TTS winner before starting M2 production integration.",
     "Safe repository preparation may continue only when separately authorized.",
     "W3-P0 maintenance may continue only when separately authorized; W3-P1 guarded automatic takeover remains FUTURE and requires explicit authorization."
   ],
@@ -219,6 +224,8 @@
   "notes": [
     "Git status and commit history are authoritative; this handoff is navigation metadata.",
     "M3-P0 and M3-P1 are preparatory work only and do not mean M3 production is complete.",
+    "M2-P0 provider/service-neutral preparation is complete; M2 production remains blocked and not started until the M1 winner is selected by the user.",
+    "Future private Xia Yizhou voice-cloud compatibility is documented in .xiafork/m2-local-tts-provider.md; no public or remote TTS service, endpoint, credential, or network exposure was implemented.",
     "No SullyOS runtime success is asserted for the external TTS evaluation.",
     "W1 includes AUTOPILOT_STALL_WATCHDOG: 15 minutes without observable progress triggers a read-only self-check, not a task timeout.",
     "The watchdog must classify the state as ACTIVE, AGENT_STALL, or PROCESS_STALL and continue or safe-stop without blind reset-and-retry behavior.",
