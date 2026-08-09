@@ -57,6 +57,9 @@ xiaohongshu-skills/
 .claude/
 .pnpm-store/
 
+# Xiafork W3 supervisor runtime state is local and may contain machine/run metadata.
+.xiafork/runtime/
+
 # TIAO-Capacitor local Android toolchain and caches (D: only, never committed)
 .android-sdk/
 .gradle-user-home/

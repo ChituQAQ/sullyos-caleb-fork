@@ -6,23 +6,29 @@
     "repository": "ChituQAQ/sullyos-caleb-fork",
     "kind": "long-term upstream-compatible fork"
   },
-  "generatedAt": "2026-08-09T14:36:47.315Z",
+  "generatedAt": "2026-08-09T16:05:19.835Z",
   "git": {
     "canonicalBranch": "master",
-    "refreshBranch": "chore/w3-external-supervisor-requirements",
-    "headAtRefresh": "20a8e1d7d8c888c7cb1d9cfee14fbc67b2aa9600",
-    "originMasterAtRefresh": "20a8e1d7d8c888c7cb1d9cfee14fbc67b2aa9600",
+    "refreshBranch": "feat/w3-p0-external-stall-supervisor",
+    "headAtRefresh": "5c7cd613afc5721345d877c1262d0822db079613",
+    "originMasterAtRefresh": "5c7cd613afc5721345d877c1262d0822db079613",
     "upstreamMaster": "44bdf88dc35eb2f5edee9ce56b92716a3fca76df",
     "workingTreeCleanAtRefresh": false,
     "expectedCleanAfterCommit": true,
     "handoffCommit": {
       "resolution": "single-focused-descendant",
-      "baseCommit": "20a8e1d7d8c888c7cb1d9cfee14fbc67b2aa9600",
+      "baseCommit": "5c7cd613afc5721345d877c1262d0822db079613",
       "commitsAhead": 1,
-      "subject": "chore: document w3 external supervisor requirements",
+      "subject": "feat: add external stall supervisor mvp",
       "allowedPaths": [
+        ".gitignore",
         "AGENTS.md",
-        ".xiafork/handoff.json"
+        ".xiafork/README.md",
+        ".xiafork/handoff.json",
+        "scripts/xiafork-handoff.test.ts",
+        "scripts/xiafork-run-state.mjs",
+        "scripts/xiafork-supervisor.mjs",
+        "scripts/xiafork-supervisor.test.ts"
       ]
     }
   },
@@ -103,8 +109,8 @@
     ]
   },
   "workflowRoadmap": {
-    "currentMilestone": "W2",
-    "milestoneStatus": "complete",
+    "currentMilestone": "W3",
+    "milestoneStatus": "in_progress",
     "completed": [
       "W0",
       "W2"
@@ -128,12 +134,17 @@
       },
       {
         "id": "W3",
-        "status": "not_started",
-        "summary": "Automatic Agent Takeover"
+        "status": "in_progress",
+        "summary": "P0 external stall supervisor implemented; P1 guarded automatic takeover remains future"
       }
     ]
   },
   "lastCompletedWork": [
+    {
+      "id": "W3-P0",
+      "status": "implemented",
+      "summary": "External deterministic stall watcher, durable execution checkpoint, lease foundation, recovery bundle, and read-only Supervisor Codex adapter"
+    },
     {
       "id": "M3-P1",
       "summary": "Non-destructive backup compatibility scaffolding",
@@ -173,6 +184,12 @@
       "result": "pass",
       "files": 1,
       "cases": 8
+    },
+    {
+      "command": ".\\node_modules\\.bin\\vitest.cmd run scripts/xiafork-supervisor.test.ts",
+      "result": "pass",
+      "files": 1,
+      "cases": 10
     }
   ],
   "externalWork": [
@@ -190,14 +207,14 @@
   "nextAllowedWork": [
     "Wait for an explicit repository handoff containing the M1 TTS winner before starting M2.",
     "Safe repository preparation may continue only when separately authorized.",
-    "W3 requirements may inform future design, but W3 implementation remains FUTURE / NOT STARTED and is not authorized by this handoff."
+    "W3-P0 maintenance may continue only when separately authorized; W3-P1 guarded automatic takeover remains FUTURE and requires explicit authorization."
   ],
   "hardStops": [
     "Git state conflicts with this handoff or contains unexplained work.",
     "Origin master contains an unknown concurrent update.",
     "Continuation would require force, rebase, a non-fast-forward merge, or history rewriting.",
     "Product work requires the unavailable M1 TTS winner.",
-    "Continuation would implement W3 or start unapproved product implementation."
+    "Continuation would exceed the W3-P0 read-only recovery boundary, implement W3-P1 automatic takeover, or start unapproved product work."
   ],
   "notes": [
     "Git status and commit history are authoritative; this handoff is navigation metadata.",
@@ -206,10 +223,12 @@
     "W1 includes AUTOPILOT_STALL_WATCHDOG: 15 minutes without observable progress triggers a read-only self-check, not a task timeout.",
     "The watchdog must classify the state as ACTIVE, AGENT_STALL, or PROCESS_STALL and continue or safe-stop without blind reset-and-retry behavior.",
     "Known W1 limitation: a worker already stuck in an agent-side stall may be unable to invoke its own self-watchdog; the stalled Agent must never be the sole owner of stall detection and recovery.",
-    "W3 must eventually use an external supervisor with an execution lifecycle independent of the worker and must distinguish Agent liveness from task or child-process liveness using observable progress signals.",
-    "W3 replacement Agents should resume from W2 Structured Handoff plus a future durable execution checkpoint at the last safe completed boundary, without blindly repeating completed expensive work.",
-    "W3 requires future single-active-agent, lease, ownership, or equivalent protection against duplicate work and concurrent worktree writes.",
+    "W3-P0 implements an external deterministic watcher with an execution lifecycle independent of the worker and separates Agent liveness from task or child-process liveness using observable progress signals.",
+    "W3-P0 stores durable run checkpoints, leases, observable evidence, and recovery bundles only under Git-ignored .xiafork/runtime/; these files must not contain chat transcripts, secrets, credentials, or tokens.",
+    "W3-P0 uses a minimum single-owner lease that rejects silent owner replacement; it does not steal leases or start replacement Agents.",
+    "On AGENT_STALL, W3-P0 may invoke a short-lived Supervisor Codex through the supported non-interactive CLI in an ephemeral read-only sandbox; the deterministic watcher owns timing.",
+    "The harmless local demo generated a recovery bundle and launched Codex 0.147.0 with approval=never and sandbox=read-only; the assessment could not complete because the current execution policy blocked outbound API access, and that boundary was not bypassed.",
     "W3 takeover must inherit the original authorized scope, hard stops, forbidden paths, human-only boundaries, and safety constraints; replacement never expands authority.",
-    "W3 Automatic Agent Takeover remains FUTURE / NOT STARTED; these requirements do not authorize supervisor code, takeover, orchestration, session spawning, cross-agent transfer, a daemon, or a background service."
+    "W3-P0 is implemented but full W3 is not complete; W3-P1 automatic replacement and takeover remains FUTURE and is not authorized."
   ]
 }

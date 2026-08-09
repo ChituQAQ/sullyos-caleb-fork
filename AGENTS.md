@@ -309,29 +309,36 @@ The watchdog is an execution discipline within W1. It is not a task timeout and 
 * Every major autonomous handoff refreshes the semantic state and Git-derived fields.
 * The structured handoff must remain consistent with Git; Git wins if they conflict.
 
-### W3: Automatic Agent Takeover — Future
+### W3: Automatic Agent Takeover — In Progress (P0 Implemented; P1 Future)
 
-* A future coding agent may consume the repository handoff and continue an authorized queue automatically.
 * W3 is a coding-workflow capability, not a SullyOS user product feature.
-* W3 is FUTURE / NOT STARTED and is not implemented by W1, W2, or `AUTOPILOT_STALL_WATCHDOG`; do not add agent takeover, agent orchestration, automatic session spawning, automatic cross-agent transfer, a daemon, an orchestrator, or a background service in this milestone.
+* W3-P0 implements the external stall supervisor MVP: a durable execution checkpoint, deterministic local watcher, minimum lease protection, recovery bundle, and read-only Supervisor Codex adapter.
+* W3-P0 is not full automatic takeover. W3-P1 guarded automatic replacement and takeover remains FUTURE and is not authorized by the P0 implementation.
 
-#### W3 Future Requirements — External Supervision and Safe Takeover
+#### W3-P0: External Stall Supervisor MVP
 
 Canonical principle: **Never make the stalled agent solely responsible for detecting and recovering from its own stall.** 不能让已经卡住的 Agent 成为检测和救活自己的唯一责任方。
 
-* W3 must eventually introduce an external supervisor or watchdog whose execution lifecycle is independent of the current worker Agent. It must remain able to observe and classify the run after the worker stops producing tool calls or the Agent session itself loses the ability to advance; it must not depend on the stalled Agent voluntarily invoking its own watchdog.
-* The supervisor must distinguish **agent liveness** from **task or child-process liveness**. A lack of chat output for 15 minutes is not sufficient evidence of failure. Relevant observations may include last tool-call and tool-result timestamps, child-process existence, CPU-time deltas, GPU utilization or compute processes, network or download progress, file size or timestamp growth, log or checkpoint progress, and the current execution phase.
-* W3 should retain the W1 meanings of `WATCHDOG=ACTIVE`, `WATCHDOG=AGENT_STALL`, and `WATCHDOG=PROCESS_STALL`, while allowing the external supervisor to classify them independently when the worker cannot self-check.
-* After `WATCHDOG=AGENT_STALL` is established and no task or child process is still doing useful work, the supervisor must be able to proceed without the original Agent: preserve or read durable execution state; wake, restore, or create a replacement Agent; and let that Agent resume from W2 Structured Handoff plus a durable execution checkpoint at the last safe completed boundary. It must not blindly restart the task from its beginning.
-* The future durable execution checkpoint is finer-grained than W2's repository-level handoff. Without prescribing a schema yet, it must be able to express the task or run ID, authorized scope, current and last-completed phases, current or last tool or command, whether a child process is expected and its PID when relevant, last observable-progress time, generated artifacts, completed expensive steps, known failures, retry count, hard-stop state, next safe action, and human-only boundaries.
-* Replacement Agents must not repeat completed downloads, training, benchmarks, model loads, artifact generation, or Git work merely because prior conversation context is unavailable.
-* W3 must include a single-active-agent, lease, ownership, or equivalent concurrency safeguard. A supervisor must not launch duplicate work while the prior Agent or child process is still active; the safeguard must prevent duplicate training or downloads, double Git writes, parallel model loads, duplicate benchmarks, and two Agents modifying the same worktree.
+* `scripts/xiafork-run-state.mjs` owns the local checkpoint commands and atomic single-owner lease foundation. Workers must heartbeat after meaningful tools or phase changes, register an expected long-running child and progress artifacts, and clear that expectation when the child finishes.
+* Runtime state and recovery evidence live under ignored `.xiafork/runtime/`. Checkpoints must contain concise execution metadata only—never chat transcripts, secrets, credentials, or tokens.
+* `scripts/xiafork-supervisor.mjs` is the deterministic non-AI watcher. Its default loop interval is 60 seconds; after 15 minutes without observable progress it diagnoses rather than treating the interval as a timeout. A live expected child receives a second sample after about 3 minutes.
+* The watcher distinguishes **agent liveness** from **task or child-process liveness** using checkpoint/tool-result time, child PID existence, CPU-time delta when available, NVIDIA compute-process activity when available, and progress artifact size or modification-time growth. Lack of chat output alone is not failure evidence.
+* The watcher retains the W1 meanings of `WATCHDOG=ACTIVE`, `WATCHDOG=AGENT_STALL`, and `WATCHDOG=PROCESS_STALL`. It never kills the worker or child process.
+* On `WATCHDOG=AGENT_STALL`, P0 writes a durable recovery bundle and may invoke a short-lived Supervisor Codex through the locally supported non-interactive CLI. Supervisor Codex runs with a read-only sandbox and no approvals, performs semantic assessment only, and must not edit, commit, push, kill, take a lease, broaden authority, or start replacement work.
+* The P0 lease prevents a second owner from silently overwriting an active run. P0 does not steal or expire leases and does not implement distributed locking.
+
+#### W3-P1: Guarded Automatic Takeover — Future
+
+* A future replacement Agent may consume W2 Structured Handoff plus the P0 durable execution checkpoint and continue at the last safe completed boundary without blindly restarting completed downloads, training, benchmarks, model loads, artifact generation, or Git work.
+* P1 must validate that no worker or useful child remains active before replacement, and must preserve single-active-agent ownership so duplicate work and concurrent worktree writes cannot occur.
 * Takeover must preserve the original authorized scope, hard stops, forbidden paths, human-only boundaries, and safety constraints. Replacing an Agent never grants more authority. Git and the repository contract remain authoritative.
+* P1 must not be implemented without separate explicit authorization. P0 does not automatically wake or create a replacement Agent, write the production worktree, take over Git, terminate the old Agent, or steal its lease.
 
 The workflow responsibility split is:
 
 * **W1 — Autonomous Execution / AUTOPILOT:** how one authorized Agent executes a multi-step queue, including self-watchdog behavior and the `ACTIVE`, `AGENT_STALL`, and `PROCESS_STALL` semantics.
 * **W2 — Structured Repository Handoff:** how a new Agent understands durable repository and project state without relying on previous conversation context.
-* **W3 — Automatic Agent Takeover:** who monitors the worker from outside, how agent-side stalls are detected when the worker cannot self-check, and how a replacement safely resumes from W2 plus an execution checkpoint without duplicating completed work or exceeding authority.
+* **W3-P0 — External Stall Supervisor:** an outside deterministic watcher, durable execution checkpoint, anomaly-only read-only Supervisor Codex assessment, and lease foundation.
+* **W3-P1 — Guarded Automatic Takeover:** future safe replacement from W2 plus the execution checkpoint without duplicating completed work or exceeding authority.
 
-These are future design requirements only. They do not select a daemon, IPC mechanism, process manager, scheduler, service, heartbeat implementation, database, or checkpoint schema, and they do not authorize W3 implementation.
+P0 uses Node.js built-ins and the installed Codex CLI. It is not a daemon framework, Windows service, scheduler, database, UI automation layer, or full orchestration system.

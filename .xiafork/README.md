@@ -38,3 +38,33 @@ node scripts/xiafork-handoff.mjs show
 ```
 
 The JSON Schema documents the formal data contract. The helper uses a small Node-standard-library validator so W2 adds no runtime or development dependency.
+
+## W3-P0 External Stall Supervisor
+
+W2 describes durable repository/project state. W3-P0 adds finer-grained local execution state for an active AUTOPILOT run:
+
+```text
+node scripts/xiafork-run-state.mjs init --run-id <id> --task-title <title> --owner <owner> --scope <comma-list> --forbid <comma-list>
+node scripts/xiafork-run-state.mjs heartbeat --run-id <id> --owner <owner> --tool <description> --tool-result
+node scripts/xiafork-run-state.mjs phase --run-id <id> --owner <owner> --current <phase> --completed <phase>
+node scripts/xiafork-run-state.mjs child --run-id <id> --owner <owner> --pid <pid> --artifact <path>
+node scripts/xiafork-run-state.mjs child --run-id <id> --owner <owner> --clear
+node scripts/xiafork-run-state.mjs complete --run-id <id> --owner <owner>
+node scripts/xiafork-run-state.mjs show --run-id <id>
+node scripts/xiafork-run-state.mjs validate --run-id <id>
+```
+
+The deterministic watcher is independent of the worker Agent's decision loop:
+
+```text
+node scripts/xiafork-supervisor.mjs watch --run-id <id>
+node scripts/xiafork-supervisor.mjs once --run-id <id> --no-supervisor
+```
+
+Defaults are a 60-second watch interval, a 15-minute stale-progress threshold, and a 3-minute child-process recheck. `--stall-ms`, `--recheck-ms`, and `--interval-ms` are explicit debug/test overrides; they are not production timeout policy. A recent heartbeat or observed child/artifact progress remains `WATCHDOG=ACTIVE`.
+
+Run state, lease files, evidence, and recovery reports live under `.xiafork/runtime/`, which is Git-ignored. Do not record chat transcripts, secrets, credentials, or tokens there. A run ID has one lease owner; P0 rejects conflicts and never steals a lease.
+
+On `WATCHDOG=AGENT_STALL`, the watcher writes `<runId>-recovery.md` and invokes the installed `codex exec` in an ephemeral read-only sandbox for semantic assessment. The deterministic watcher—not Supervisor Codex—owns timing and classification evidence. On `WATCHDOG=PROCESS_STALL`, it reports after the second sample and does not kill anything.
+
+W3-P0 provides detection, evidence, and read-only assessment only. W3-P1 automatic replacement/takeover remains future work and requires separate authorization.
