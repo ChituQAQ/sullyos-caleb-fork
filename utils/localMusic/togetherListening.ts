@@ -30,10 +30,10 @@ export interface TogetherListeningContext {
 }
 
 export function getTogetherListeningContext(
-  enabled: boolean,
+  hasCurrentLocalTrack: boolean,
   nowPlaying: NowPlayingState | null | undefined,
 ): TogetherListeningContext | null {
-  if (!enabled || !nowPlaying) return null;
+  if (!hasCurrentLocalTrack || !nowPlaying) return null;
   return {
     title: nowPlaying.title,
     artist: nowPlaying.artist,

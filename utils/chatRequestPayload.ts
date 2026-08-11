@@ -125,7 +125,8 @@ export function deriveListeningFromSnapshot(
     if (!snap) return { userListeningContext: null, isListeningTogether: false };
     const { current, playing, lyric, activeLyricIdx, listeningTogetherWith, cfg } = snap;
     let userListeningContext: UserListeningContext | null = null;
-    const localContext = getTogetherListeningContext(snap.togetherListeningEnabled, snap.nowPlaying);
+    const isTargetSelected = listeningTogetherWith.includes(charId);
+    const localContext = getTogetherListeningContext(!!current?.localLibraryTrackId, snap.nowPlaying);
     if (localContext) {
         userListeningContext = {
             songName: localContext.title,
@@ -136,8 +137,6 @@ export function deriveListeningFromSnapshot(
             lyricWindow: [],
             activeIdx: -1,
         };
-    } else if (current?.localLibraryTrackId) {
-        userListeningContext = null;
     } else if (current && playing && lyric.length > 0) {
         const idx = activeLyricIdx;
         if (idx >= 0) {
@@ -160,7 +159,7 @@ export function deriveListeningFromSnapshot(
             activeIdx: -1,
         };
     }
-    const isListeningTogether = !!(localContext || (userListeningContext && listeningTogetherWith.includes(charId)));
+    const isListeningTogether = !!(userListeningContext && isTargetSelected);
     return { userListeningContext, isListeningTogether, musicCfg: cfg };
 }
 

@@ -65,7 +65,7 @@ export interface Song {
   container?: string;
 }
 
-export interface LyricLine { t?: number; endTime?: number; text: string; }
+export interface LyricLine { t?: number; endTime?: number; text: string; translationText?: string; }
 
 export interface NeteaseProfile {
   userId: number;
@@ -171,7 +171,6 @@ export interface MusicPlaybackSnapshot {
   cfg: MusicCfg;
   recentTrackChange?: RecentTrackChange | null;
   nowPlaying: NowPlayingState | null;
-  togetherListeningEnabled: boolean;
 }
 let __musicPlaybackSnapshot: MusicPlaybackSnapshot | null = null;
 export const loadMusicPlaybackSnapshot = (): MusicPlaybackSnapshot | null => __musicPlaybackSnapshot;
@@ -372,8 +371,6 @@ interface MusicContextType {
   clearListeningPartners: () => void;
   /** 最近一次一起听途中换歌的记录（供 prompt 注入"察觉换歌"，不触发主动消息） */
   recentTrackChange: RecentTrackChange | null;
-  togetherListeningEnabled: boolean;
-  setTogetherListeningEnabled: (enabled: boolean) => void;
   nowPlaying: NowPlayingState | null;
 
   // toast 转发 (解耦)
@@ -465,11 +462,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // 播放
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const engineRef = useRef<HtmlAudioPlaybackEngine | null>(null);
-  const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [loadingSong, setLoadingSong] = useState(false);
   const [playbackState, setPlaybackState] = useState<PlaybackEngineState>('idle');
+  const playing = playbackState === 'playing';
   const [volume, setVolumeState] = useState(1);
 
   // 歌词
@@ -577,7 +574,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // 一起听 - char 加入后在 miniPlayer / 播放页显示徽标；切歌 / 结束自动清空
   const [listeningTogetherWith, setListeningTogetherWith] = useState<string[]>([]);
-  const [togetherListeningEnabled, setTogetherListeningEnabled] = useState(false);
   const addListeningPartner = useCallback((charId: string) => {
     setListeningTogetherWith(prev => prev.includes(charId) ? prev : [...prev, charId]);
   }, []);
@@ -625,7 +621,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     audioRef.current = engine.element;
     const unsubscribe = engine.subscribe(event => {
       setPlaybackState(event.state);
-      setPlaying(event.state === 'playing');
       setLoadingSong(event.state === 'loading');
       setProgress(event.positionSeconds);
       setDuration(event.durationSeconds);
@@ -682,7 +677,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return;
         }
         engineRef.current?.loadBlob(blob);
-        engineRef.current?.play().catch(error => toast(`播放失败：${error?.message || 'runtime rejected playback'}`, 'error'));
+        engineRef.current?.play().catch(() => {});
 
         // ── 本地歌词时间分布 ──
         // MiniMax / ACE-Step 不返回带时间戳的歌词，但我们写歌时就有原文。
@@ -759,11 +754,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           t: line.timeMs === undefined ? undefined : line.timeMs / 1000,
           endTime: line.endTimeMs === undefined ? undefined : line.endTimeMs / 1000,
           text: line.text,
+          translationText: line.translationText,
         })));
         setTlyric([]);
         setLyricsKind(document.kind);
         engineRef.current?.loadBlob(blob);
-        engineRef.current?.play().catch(error => toast(`播放失败：${error?.message || '当前 runtime 无法解码此格式'}`, 'error'));
+        engineRef.current?.play().catch(() => {});
         if ('mediaSession' in navigator) {
           try {
             (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({
@@ -787,7 +783,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       const a = audioRef.current!;
       engineRef.current?.loadUrl(url.replace(/^http:\/\//i, 'https://'));
-      engineRef.current?.play().catch(error => toast(`播放失败：${error?.message || 'runtime rejected playback'}`, 'error'));
+      engineRef.current?.play().catch(() => {});
       if (lyricRes) {
         const parsedLyric = parseLyric(lyricRes?.lrc?.lyric || '');
         setLyric(parsedLyric);
@@ -809,6 +805,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } catch {}
       }
     } catch (e: any) {
+      if (playRequestGateRef.current.isCurrent(requestId)) setPlaybackState('error');
       toast(`播放失败：${e.message}`, 'error');
     } finally {
       setLoadingSong(false);
@@ -834,7 +831,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     endedHandlerRef.current = () => {
       if (modeRef.current === 'single') {
-        const a = audioRef.current; if (a) { a.currentTime = 0; a.play().catch(() => {}); }
+        const engine = engineRef.current;
+        if (engine) { engine.seekSeconds(0); engine.play().catch(() => {}); }
         return;
       }
       nextSong();
@@ -842,7 +840,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [nextSong]);
 
   const togglePlay = useCallback(() => {
-    const a = audioRef.current; if (!a) return;
+    const a = audioRef.current; const engine = engineRef.current; if (!a || !engine) return;
     // 刷新后 audio 元素是新创建的、尚未设置 src；此时按播放键应根据持久化的队列按需加载当前曲目
     if (!a.src) {
       const q = queueRef.current; const i = idxRef.current;
@@ -850,8 +848,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (cur) playSong(cur, { alsoSetQueue: false });
       return;
     }
-    if (a.paused) a.play().catch(() => {}); else a.pause();
-  }, [playSong]);
+    if (engine.currentState === 'loading') return;
+    if (engine.currentState === 'playing') {
+      engine.pause();
+      return;
+    }
+    if (engine.currentState === 'ended') engine.seekSeconds(0);
+    engine.play().catch(() => {});
+  }, [playSong, toast]);
 
   const seek = useCallback((pct: number) => {
     if (!duration) return;
@@ -871,23 +875,22 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const ms = (navigator as any).mediaSession;
     try {
       ms.setActionHandler('play', () => {
-        const a = audioRef.current; if (!a) return;
+        const a = audioRef.current; const engine = engineRef.current; if (!a || !engine) return;
         if (!a.src) {
           const q = queueRef.current; const i = idxRef.current;
           const cur = i >= 0 && i < q.length ? q[i] : null;
           if (cur) playSong(cur, { alsoSetQueue: false });
           return;
         }
-        if (a.paused) a.play().catch(() => {});
+        if (engine.currentState !== 'playing' && engine.currentState !== 'loading') engine.play().catch(() => {});
       });
       ms.setActionHandler('pause', () => {
-        const a = audioRef.current; if (a && !a.paused) a.pause();
+        const engine = engineRef.current; if (engine?.currentState === 'playing') engine.pause();
       });
       ms.setActionHandler('nexttrack', () => nextSong());
       ms.setActionHandler('previoustrack', () => prevSong());
       ms.setActionHandler('seekto', (details: any) => {
-        const a = audioRef.current; if (!a) return;
-        if (typeof details.seekTime === 'number') a.currentTime = details.seekTime;
+        if (typeof details.seekTime === 'number') engineRef.current?.seekSeconds(details.seekTime);
       });
     } catch { /* ignore */ }
   }, [nextSong, prevSong, playSong]);
@@ -914,9 +917,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       cfg,
       recentTrackChange,
       nowPlaying,
-      togetherListeningEnabled,
     };
-  }, [current, playing, progress, duration, lyric, activeLyricIdx, listeningTogetherWith, cfg, recentTrackChange, togetherListeningEnabled]);
+  }, [current, playing, progress, duration, lyric, activeLyricIdx, listeningTogetherWith, cfg, recentTrackChange]);
 
   const nowPlaying = useMemo<NowPlayingState | null>(() => current?.localLibraryTrackId ? createNowPlayingState({
     trackId: current.localLibraryTrackId, title: current.name, artist: current.artists,
@@ -1033,7 +1035,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     playMode, setPlayMode,
     liked, toggleLike,
     listeningTogetherWith, addListeningPartner, removeListeningPartner, clearListeningPartners,
-    togetherListeningEnabled, setTogetherListeningEnabled, nowPlaying,
+    nowPlaying,
     recentTrackChange,
     toast, setToastHandler,
     localAlbumSongs, addLocalSong, removeLocalSong,

@@ -8,6 +8,7 @@ import { Play, Pause, SkipBack, SkipForward } from '@phosphor-icons/react';
 import { isPaperWallpaper, useOS } from '../../context/OSContext';
 import { useMusic } from '../../context/MusicContext';
 import { AppID } from '../../types';
+import { useBlobRefUrl } from '../../utils/blobRef';
 
 const formatTime = (sec: number) => {
   if (!isFinite(sec) || sec < 0) sec = 0;
@@ -25,7 +26,7 @@ const NowPlayingSquareWidget: React.FC<{ contentColor: string }> = ({ contentCol
   const pct = duration > 0 ? (progress / duration) * 100 : 0;
   const hasSong = !!current;
 
-  const albumPic = current?.albumPic;
+  const albumPic = useBlobRefUrl(current?.albumPic);
   const title = current?.name || '抽一张来听';
   const artists = current?.artists || '— 轻触，进入';
   const statusText = !hasSong ? 'Standby' : (playing ? 'Now Playing' : 'Paused');

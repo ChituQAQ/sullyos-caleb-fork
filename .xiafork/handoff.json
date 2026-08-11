@@ -6,36 +6,54 @@
     "repository": "ChituQAQ/sullyos-caleb-fork",
     "kind": "long-term upstream-compatible fork"
   },
-  "generatedAt": "2026-08-09T21:48:00.000Z",
+  "generatedAt": "2026-08-11T18:42:57.282Z",
   "git": {
     "canonicalBranch": "master",
-    "refreshBranch": "feat/m4-local-music-together-listening",
-    "headAtRefresh": "50cf1e9996b0bf6510f1aaef01da761cfd9006ea",
-    "originMasterAtRefresh": "50cf1e9996b0bf6510f1aaef01da761cfd9006ea",
+    "refreshBranch": "fix/m4-local-music-entry",
+    "headAtRefresh": "3cf3e9884843a14bad6b863b0bf6473d7c4c7c98",
+    "originMasterAtRefresh": "3cf3e9884843a14bad6b863b0bf6473d7c4c7c98",
     "upstreamMaster": "44bdf88dc35eb2f5edee9ce56b92716a3fca76df",
     "workingTreeCleanAtRefresh": false,
     "expectedCleanAfterCommit": true,
     "handoffCommit": {
       "resolution": "single-focused-descendant",
-      "baseCommit": "50cf1e9996b0bf6510f1aaef01da761cfd9006ea",
+      "baseCommit": "3cf3e9884843a14bad6b863b0bf6473d7c4c7c98",
       "commitsAhead": 1,
-      "subject": "feat: add local music together-listening mvp",
+      "subject": "fix: complete local music acceptance",
       "allowedPaths": [
         ".xiafork/handoff.json",
         ".xiafork/m4-local-music.md",
         "apps/MusicApp.tsx",
         "apps/music/MusicUI.tsx",
+        "components/os/GlobalMiniPlayer.tsx",
+        "components/os/NowPlayingSquareWidget.tsx",
+        "components/chat/MessageItem.tsx",
         "context/MusicContext.tsx",
         "hooks/useChatAI.ts",
-        "package.json",
-        "pnpm-lock.yaml",
         "scripts/xiafork-handoff.test.ts",
-        "utils/blobRef.ts",
-        "utils/chatPrompts.ts",
         "utils/chatRequestPayload.localMusic.test.ts",
+        "utils/chatParser.localMusic.test.ts",
         "utils/chatRequestPayload.ts",
         "utils/context.ts",
-        "utils/localMusic/"
+        "utils/localMusic/acceptancePolish.test.ts",
+        "utils/localMusic/directoryImport.test.ts",
+        "utils/localMusic/directoryImport.ts",
+        "utils/localMusic/library.test.ts",
+        "utils/localMusic/library.ts",
+        "utils/localMusic/lyricScroll.test.ts",
+        "utils/localMusic/lyricScroll.ts",
+        "utils/localMusic/lyrics.test.ts",
+        "utils/localMusic/lyrics.ts",
+        "utils/localMusic/metadata.test.ts",
+        "utils/localMusic/metadata.ts",
+        "utils/localMusic/playbackEngine.test.ts",
+        "utils/localMusic/playbackEngine.ts",
+        "utils/localMusic/sourceResolver.test.ts",
+        "utils/localMusic/sourceResolver.ts",
+        "utils/localMusic/togetherListening.test.ts",
+        "utils/localMusic/togetherListening.ts",
+        "utils/localMusic/types.ts",
+        "utils/musicAppNavigation.test.ts"
       ]
     }
   },
@@ -97,7 +115,12 @@
       {
         "id": "M4",
         "status": "complete",
-        "summary": "User-authorized local music together-listening production MVP: isolated local Blob library, metadata/artwork/lyrics import, timed lyric seek, playback abstraction, NowPlayingState, and privacy-projected AI context; M1 remains unresolved"
+        "summary": "Local Music Together-Listening MVP is human accepted: entry, reference playback/storage, artwork, timed and bilingual lyrics, official Together Listening join, directory recovery, playback state, legacy compatibility, and privacy passed"
+      },
+      {
+        "id": "M4.1",
+        "status": "future",
+        "summary": "Deferred lyrics UX polish: mature direct lyric-area touch/drag scrolling and a larger lyric viewport through player-layout proportion changes"
       },
       {
         "id": "M5",
@@ -159,6 +182,26 @@
   },
   "lastCompletedWork": [
     {
+      "id": "M4-ACCEPTANCE-POLISH-ROUND-4",
+      "status": "human_accepted_complete",
+      "summary": "Human acceptance passed the complete M4 Local Music Together-Listening MVP. Round 4 fixed full-document lyric browsing, future seek, and primary/translation normalization; M4.1 interaction and viewport polish is explicitly deferred"
+    },
+    {
+      "id": "M4-ACCEPTANCE-POLISH-ROUND-3",
+      "status": "implementation_complete_human_acceptance_required",
+      "summary": "Restored official pre-join music awareness and MUSIC_ACTION join for local tracks, added persistent no-timeout lyric browsing/scrubbing and bilingual primary/translation normalization, introduced reference-only recursive directory imports with one-root reauthorization, and unified play/pause UI under engine state"
+    },
+    {
+      "id": "M4-ACCEPTANCE-POLISH-ROUND-2",
+      "status": "implementation_complete_human_acceptance_required",
+      "summary": "Resolved local artwork across current-track surfaces, restored official full-player chrome and character-driven Together Listening UX, and replaced new full-audio Blob imports with read-only FileSystemHandle references while preserving schema-v1 Blob playback"
+    },
+    {
+      "id": "M4-ACCEPTANCE-HOTFIX",
+      "status": "complete",
+      "summary": "Exposed the Local Music landing page without NetEase login, made each lyric entry a full-width centered row with bounded readable width, replaced the contradictory global local-music toggle with an explicit CharacterProfile.id selector backed only by listeningTogetherWith, and added focused navigation/layout/target/privacy regression coverage"
+    },
+    {
       "id": "M4",
       "status": "complete",
       "summary": "Implemented the user-authorized PC/web local music and Together Listening MVP while M1 remains paused for human quality optimization; Android/iOS adapter boundaries are ready but runtime tests were unavailable"
@@ -200,6 +243,68 @@
     }
   ],
   "tests": [
+    {
+      "command": ".\\node_modules\\.bin\\vitest.cmd run utils/localMusic utils/blobRef.test.ts utils/chatRequestPayload.localMusic.test.ts utils/chatRequestPayload.trackSwitch.test.ts utils/chatParser.localMusic.test.ts utils/musicAppNavigation.test.ts --reporter=dot",
+      "result": "pass",
+      "files": 14,
+      "cases": 118
+    },
+    {
+      "command": ".\\node_modules\\.bin\\vitest.cmd run <11 backup suites> --reporter=dot",
+      "result": "pass",
+      "files": 11,
+      "cases": 84
+    },
+    {
+      "command": ".\\node_modules\\.bin\\vitest.cmd run utils/localMusic utils/blobRef.test.ts utils/chatRequestPayload.localMusic.test.ts utils/chatRequestPayload.trackSwitch.test.ts utils/chatParser.localMusic.test.ts utils/musicAppNavigation.test.ts --reporter=dot",
+      "result": "pass",
+      "files": 13,
+      "cases": 100
+    },
+    {
+      "command": ".\\node_modules\\.bin\\vitest.cmd run --reporter=json",
+      "result": "known-baseline-failures-only",
+      "files": 808,
+      "cases": 2602,
+      "passed": 2588,
+      "failed": 14
+    },
+    {
+      "command": ".\\node_modules\\.bin\\vitest.cmd run utils/backupCompatibility.scaffolding.test.ts utils/backupFormat.test.ts utils/backupImportPolicy.test.ts utils/db.test.ts utils/backupIntegrity.test.ts --reporter=dot",
+      "result": "pass",
+      "files": 4,
+      "cases": 39
+    },
+    {
+      "command": ".\\node_modules\\.bin\\vitest.cmd run scripts/xiafork-handoff.test.ts scripts/xiafork-supervisor.test.ts --reporter=dot",
+      "result": "pass",
+      "files": 2,
+      "cases": 18
+    },
+    {
+      "command": "changed-production-source filtered repository TypeScript check",
+      "result": "pass",
+      "files": 13,
+      "cases": 0
+    },
+    {
+      "command": "node scripts/build-workers.mjs; .\\node_modules\\.bin\\vite.cmd build",
+      "result": "pass",
+      "files": 0,
+      "cases": 0
+    },
+    {
+      "command": "npx vitest run utils/localMusic utils/chatRequestPayload.localMusic.test.ts utils/chatRequestPayload.trackSwitch.test.ts utils/musicAppNavigation.test.ts --reporter=dot",
+      "result": "pass",
+      "files": 8,
+      "cases": 48
+    },
+    {
+      "command": "corepack pnpm@10 run build:workers; npx vite build",
+      "result": "pass",
+      "files": 0,
+      "cases": 0
+    },
     {
       "command": "npx vitest run utils/localMusic utils/chatRequestPayload.localMusic.test.ts utils/chatRequestPayload.trackSwitch.test.ts --reporter=dot",
       "result": "pass",
@@ -262,7 +367,7 @@
     "M2 production integration must not start until an explicit handoff records the human-selected TTS adapter target."
   ],
   "nextAllowedWork": [
-    "Human acceptance test of local music import, metadata/artwork/lyrics, timed-lyric seek, playback, and Together Listening context.",
+    "M4.1 lyrics UX polish remains FUTURE and must not start without separate explicit authorization: direct lyric-area touch/drag polish and a larger lyric viewport/player-layout pass.",
     "Wait for an explicit repository handoff containing the human-selected M1 TTS winner before starting M2 production integration.",
     "Do not automatically start M1, M2-P1, M5, M8, or native background-media enhancements."
   ],
@@ -274,10 +379,36 @@
     "Continuation would exceed the W3-P0 read-only recovery boundary, implement W3-P1 automatic takeover, or start unapproved product work."
   ],
   "notes": [
+    "M4 Local Music Together-Listening MVP is HUMAN_ACCEPTED and COMPLETE. Human browser acceptance passed entry, local playback, artwork, full lyric browsing, future seek, bilingual primary/translation display, pre-join awareness, official action join, joined state, directory recovery, one-root reauthorization, reference-only imports, legacy Blob compatibility, playback-state consistency, and privacy.",
+    "Official pre-join audit: userListeningContext describes what the user is playing independently of listeningTogetherWith; only the latter changes isListeningTogether and joined wording. ChatParser MUSIC_ACTION:join calls joinListeningTogether with the actual CharacterProfile.id.",
+    "Local pre-join context exposes only title, artist, optional album, and playing/paused. FileSystemHandle, DirectoryHandle, root ID, relative/absolute path, URI, audio, artwork bytes, lyrics, and permission metadata never enter the prompt.",
+    "Official MUSIC_ACTION chat-card albumPic values also pass through useBlobRefUrl, so local artwork tokens never reach a raw image source and object URLs retain shared lifecycle cleanup.",
+    "Lyrics use explicit following/browsing state without a timer. The full timed document remains mounted in a definite-height native overflow-y scroll box; any timed row can seek past or future positions, while explicit return restores auto-follow.",
+    "Round 4 real lyric-scroll root cause: the Round 3 onScroll path synchronously queried and measured every lyric row and set React state for every native scroll event, causing forced-layout thrash on real long documents. Pure DOM-shaped helper tests did not exercise rendered layout or event-frame cost.",
+    "Round 4 bilingual root cause: mixed synchronized frames were normalized with tag.language as the preferred primary row language. ILyricsTag.language describes the frame and can describe a translation-bearing frame, so Chinese translation rows could be promoted over source-first original rows. Row reordering now requires file-level language or explicit descriptors; ambiguous content preserves source order.",
+    "Round 4 lyric persistence review: an explicit same-fingerprint re-import reparses and replaces only the existing fork-only LyricsDocument when a non-empty lyric source is found. It does not change AetherOS_Data, DB versions/stores, source authorization, audio lifecycle, artwork, metadata, backup/export, or restore behavior; old builds still understand text/translationText, and re-import is the rollback/repair boundary.",
+    "Round 4 acceptance statuses: ARTWORK_SURFACES=HUMAN_PASS; LOCAL_ARTWORK_UNOBSTRUCTED=HUMAN_PASS; LYRIC_VIEWPORT_SPACE=HUMAN_PASS; FULL_PLAYER_VOLUME_REMOVED=HUMAN_PASS; LOCAL_PREJOIN_AWARENESS=HUMAN_PASS; LOCAL_MUSIC_ACTION_JOIN=HUMAN_PASS; JOINED_TOGETHER_LISTENING=HUMAN_PASS; DIRECTORY_RECURSIVE_IMPORT=HUMAN_PASS; DIRECTORY_HANDLE_RESTART_RECOVERY=HUMAN_PASS; ONE_ROOT_REAUTH=HUMAN_PASS; PLAY_PAUSE_SURFACES=HUMAN_PASS.",
+    "Final M4 lyric statuses: FULL_LYRIC_BROWSING=HUMAN_PASS; FUTURE_LYRIC_SEEK=HUMAN_PASS; BILINGUAL_PRIMARY_LYRIC=HUMAN_PASS; LRC_SIDECAR_REAL_ACCEPTANCE=NOT_TESTED.",
+    "M4.1 Lyrics UX Polish=FUTURE: direct lyric-area touch/drag interaction should feel like a mature music app, and the Now Playing layout should allocate more vertical space to lyrics. This debt is explicitly deferred and is not part of the M4 release.",
+    "Bilingual normalization keeps original/primary text in the active row and attaches translationText secondarily. Descriptor metadata wins; stable source order is the fallback, and no language is universally treated as translation.",
+    "Directory import persists one opaque read-only directory root and rootId plus relativePath per track, scans nested folders sequentially, matches same-folder LRC, reports progress, isolates corrupt files, and never stores full audio bytes.",
+    "MusicContext playing is derived solely from PlaybackEngineState. Player surfaces consume the same boolean; request generations suppress rapid-toggle and old-source Promise races, while play rejection/ended/error publish engine state.",
+    "Official player audit: upstream full Now Playing has no large Together Listening selector and no volume slider; upstream MiniPlayer receives companions. Round 2 restores that surface while preserving PlaybackEngine volume capability.",
+    "Official Together Listening flow: assistant MUSIC_ACTION joinListeningTogether calls addListeningPartner(CharacterProfile.id); MiniPlayer displays/removes companions; track changes and playback errors clear listeningTogetherWith.",
+    "New schema-v2 imports persist an opaque read-only FileSystemFileHandle plus metadata, normalized lyrics, fingerprint, and small artwork cache. They do not contain audioBlob. Unsupported web runtimes do not silently fall back to full-file copying.",
+    "LEGACY_BLOB_COMPAT=YES: existing schema-v1 app-owned-blob-copy records remain readable/playable and are not automatically migrated or deleted.",
+    "A moved, deleted, or revoked web source reports 原文件不可访问，需要重新授权/重新定位; the local library exposes a fingerprint-checked re-authorization/relink action.",
+    "Android future source resolution is isolated behind the LocalMediaSource android-content-uri adapter kind for persistable SAF read grants; iOS uses an ios-security-scoped adapter kind. No native plugin was added.",
+    "LocalMediaSource internals remain in the excluded fork-only database and never enter AI prompt context, chat messages, backup/export, or analytics. Together Listening exposes only title, artist, optional album, and playing/paused.",
+    "M4 acceptance root cause: MusicApp initialized view='profile'; the no-cookie/no-profile branch with no generated local-album songs immediately rendered NeteaseLoginPanel, while the only Local Music entry was mounted on the unreachable search view.",
+    "M4 acceptance hotfix changes navigation only: initial view is search, Profile back returns to search, Local Music remains mounted in production, and NetEase login remains reachable as an optional action.",
+    "M4 lyric acceptance root cause: lyric.map rendered inline-level button elements, so separate lyric entries could share one visual row; rows are now block/full-width inside a centered max-width column, while each entry wraps internally and active highlighting remains transform-only.",
+    "M4 Together Listening acceptance root cause: local context used a separate togetherListeningEnabled boolean and bypassed listeningTogetherWith.includes(charId), so it was globally visible rather than target-bound.",
+    "M4 Together Listening has one joined-state source of truth: the existing listeningTogetherWith CharacterProfile.id list. Sanitized user-listening awareness exists before join; the official assistant action joins the actual character and the existing MiniPlayer shows/removes companions. The full-player selector remains removed, and track switching clears partner IDs as before.",
     "M4 was explicitly authorized as an independent production milestone despite unresolved M1; this does not change the M1 winner or unblock M2 production.",
-    "M4 stores catalog metadata and each audio Blob as one record in the fork-only xiafork_local_media database. It does not change official AetherOS_Data version 70, official stores, localStorage, migrations, or backup manifests.",
+    "M4 stores reference-mode catalog metadata, artwork, lyrics, and opaque source handle in the fork-only xiafork_local_media database. Complete audio bytes are not stored for new imports. It does not change official AetherOS_Data version 70, official stores, localStorage, migrations, or backup manifests.",
     "M4 local media binaries and metadata are excluded from Official-Compatible backups and existing full-backup paths; original source files are never modified or deleted.",
-    "Together Listening is opt-in and projects only title, artist, optional album, and playing/paused state at prompt-build time. Paths, URIs, audio, artwork, lyrics, storage keys, and binary data are excluded.",
+    "Pre-join user-listening awareness and joined-state prompts project only title, artist, optional album, and playing/paused at prompt-build time. Paths, URIs, source/root IDs, handles, audio, artwork, lyrics, storage keys, and binary data are excluded.",
     "PC/web implementation passes focused tests and production build. Android and iOS retain future source/playback adapter seams; runtime testing was not available from Windows.",
     "Git status and commit history are authoritative; this handoff is navigation metadata.",
     "M3-P0 and M3-P1 are preparatory work only and do not mean M3 production is complete.",

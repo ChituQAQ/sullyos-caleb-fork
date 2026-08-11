@@ -18,6 +18,7 @@ import {
   resolveInsets,
   resolveSafeTopInset,
 } from '../../utils/floatingBallBounds';
+import { useBlobRefUrl } from '../../utils/blobRef';
 
 const STORAGE_KEY = 'globalMiniPlayer.bubblePos.v1';
 const HIDDEN_KEY = 'globalMiniPlayer.hidden.v1';
@@ -82,6 +83,7 @@ const computeInsets = (parent: HTMLElement): { insetTop: number; insetBottom: nu
 const GlobalMiniPlayer: React.FC = () => {
   const { activeApp } = useOS();
   const { current, playing, togglePlay, nextSong, prevSong, progress, duration } = useMusic();
+  const resolvedAlbumPic = useBlobRefUrl(current?.albumPic) || '';
 
   const [expanded, setExpanded] = useState(false); // 默认折叠
   const [pos, setPos] = useState<Pos>(() => readPos()); // null = 默认右下
@@ -287,7 +289,6 @@ const GlobalMiniPlayer: React.FC = () => {
   if (hidden) return null;
 
   const pct = duration > 0 ? (progress / duration) * 100 : 0;
-
   // 折叠态：小圆球（可拖动、长按隐藏、单击展开）
   if (!expanded) {
     const positional: React.CSSProperties = pos
@@ -314,7 +315,7 @@ const GlobalMiniPlayer: React.FC = () => {
           title="点击展开 · 拖动移位 · 长按隐藏"
         >
           <img
-            src={current.albumPic}
+            src={resolvedAlbumPic}
             alt=""
             draggable={false}
             className="w-full h-full object-cover pointer-events-none"
@@ -374,7 +375,7 @@ const GlobalMiniPlayer: React.FC = () => {
         </div>
         {/* 封面 */}
         <img
-          src={current.albumPic}
+          src={resolvedAlbumPic}
           alt=""
           className="w-9 h-9 rounded-lg object-cover shrink-0"
           style={{ border: '1px solid rgba(255,255,255,0.2)' }}

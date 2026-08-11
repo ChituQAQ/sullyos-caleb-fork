@@ -530,7 +530,7 @@ export const ContextBuilder = {
             }
             if (userListening.source === 'local') {
                 if (userListening.album) lines.push(`专辑：${userListening.album}`);
-                lines.push(`本地播放器状态：${userListening.playbackStatus === 'playing' ? '正在播放' : '已暂停'}。这是用户明确开启后共享的安全 metadata；你无法访问音频、文件路径、封面或歌词。`);
+                lines.push(`播放状态：${userListening.playbackStatus === 'playing' ? '正在播放' : '已暂停'}。你无法访问音频、文件路径、来源授权、封面或歌词。`);
             }
             if (userListening.lyricWindow.length > 0) {
                 lines.push(`当前播放到（>> 标记正在播放这一行）:`);

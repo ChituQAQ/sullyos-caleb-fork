@@ -11,6 +11,7 @@ export interface LyricsLine {
   timeMs?: number;
   endTimeMs?: number;
   text: string;
+  translationText?: string;
 }
 
 export interface LyricsDocument {
@@ -36,21 +37,64 @@ export interface TrackMetadata {
   container?: string;
 }
 
-export interface LocalMediaRecord {
-  schemaVersion: 1;
+export interface WebFileSystemFileHandle {
+  readonly kind: 'file';
+  readonly name: string;
+  getFile(): Promise<File>;
+  queryPermission?(descriptor?: { mode?: 'read' }): Promise<'granted' | 'denied' | 'prompt'>;
+  requestPermission?(descriptor?: { mode?: 'read' }): Promise<'granted' | 'denied' | 'prompt'>;
+}
+
+export interface WebFileSystemDirectoryHandle {
+  readonly kind: 'directory';
+  readonly name: string;
+  entries(): AsyncIterableIterator<[string, WebFileSystemFileHandle | WebFileSystemDirectoryHandle]>;
+  getFileHandle(name: string): Promise<WebFileSystemFileHandle>;
+  getDirectoryHandle(name: string): Promise<WebFileSystemDirectoryHandle>;
+  queryPermission?(descriptor?: { mode?: 'read' }): Promise<'granted' | 'denied' | 'prompt'>;
+  requestPermission?(descriptor?: { mode?: 'read' }): Promise<'granted' | 'denied' | 'prompt'>;
+}
+
+export interface LocalMediaSourceRoot {
+  id: string;
+  kind: 'web-directory-handle';
+  name: string;
+  importedAt: number;
+  handle: WebFileSystemDirectoryHandle;
+}
+
+export type LocalMediaSource =
+  | { kind: 'web-file-handle'; handle: WebFileSystemFileHandle }
+  | { kind: 'web-directory-relative'; rootId: string; relativePath: string[] }
+  | { kind: 'android-content-uri'; opaqueReference: string }
+  | { kind: 'ios-security-scoped'; opaqueReference: string };
+
+interface LocalMediaRecordBase {
   id: string;
   fingerprint: string;
   importedAt: number;
   metadata: Omit<TrackMetadata, 'artwork'>;
   artworkBlob?: Blob;
   lyrics: LyricsDocument;
-  audioBlob: Blob;
   mimeType: string;
   playbackCapability: PlaybackCapability;
   metadataStatus: 'parsed' | 'fallback';
   metadataWarning?: string;
+}
+
+export interface LegacyBlobLocalMediaRecord extends LocalMediaRecordBase {
+  schemaVersion: 1;
+  audioBlob: Blob;
   sourceLifecycle: 'app-owned-blob-copy';
 }
+
+export interface ReferenceLocalMediaRecord extends LocalMediaRecordBase {
+  schemaVersion: 2;
+  source: LocalMediaSource;
+  sourceLifecycle: 'external-reference';
+}
+
+export type LocalMediaRecord = LegacyBlobLocalMediaRecord | ReferenceLocalMediaRecord;
 
 export interface ImportItemResult {
   filename: string;

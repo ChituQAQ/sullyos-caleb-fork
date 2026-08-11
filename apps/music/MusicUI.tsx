@@ -405,7 +405,8 @@ export const VinylDisc: React.FC<{
   playing: boolean;
   size?: number;
   bitrate?: string;
-}> = ({ albumPic, playing, size = 180, bitrate }) => {
+  fullArtwork?: boolean;
+}> = ({ albumPic, playing, size = 180, bitrate, fullArtwork = false }) => {
   const resolvedAlbumPic = useBlobRefUrl(albumPic) || '';
   return (
   <div className="relative" style={{ width: size, height: size }}>
@@ -429,24 +430,24 @@ export const VinylDisc: React.FC<{
         ? <img src={resolvedAlbumPic} alt="" className="absolute inset-0 w-full h-full object-cover" />
         : <FallbackArtwork className="absolute inset-0 w-full h-full" />}
 
-      {/* 中心标签 — 不旋转跟随，保持唱片标识 */}
+      {/* 在线歌曲保留官方唱片标签；本地封面只留微小轴心，避免遮住嵌入 artwork。 */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div className="rounded-full flex items-center justify-center"
           style={{
-            width: size * 0.34,
-            height: size * 0.34,
-            background: `radial-gradient(circle at 35% 35%, rgba(255,255,255,0.95), ${C.soft})`,
-            border: `1px solid rgba(255,255,255,0.85)`,
-            boxShadow: `inset 0 2px 6px rgba(255,255,255,0.6), 0 2px 8px ${C.primary}20`,
+            width: fullArtwork ? size * 0.04 : size * 0.34,
+            height: fullArtwork ? size * 0.04 : size * 0.34,
+            background: fullArtwork ? 'rgba(255,255,255,0.75)' : `radial-gradient(circle at 35% 35%, rgba(255,255,255,0.95), ${C.soft})`,
+            border: fullArtwork ? '1px solid rgba(0,0,0,0.25)' : `1px solid rgba(255,255,255,0.85)`,
+            boxShadow: fullArtwork ? '0 0 0 1px rgba(255,255,255,0.35)' : `inset 0 2px 6px rgba(255,255,255,0.6), 0 2px 8px ${C.primary}20`,
           }}>
           {/* 中心轴心 */}
-          <div className="rounded-full"
+          {!fullArtwork && <div className="rounded-full"
             style={{
               width: size * 0.04,
               height: size * 0.04,
               background: C.muted,
               boxShadow: `inset 0 1px 2px rgba(0,0,0,0.2)`,
-            }} />
+            }} />}
         </div>
       </div>
 

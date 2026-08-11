@@ -1,9 +1,9 @@
 import { parseBlob, TimestampFormat, type IAudioMetadata, type ILyricsTag } from 'music-metadata';
-import { chooseLyrics, parseLrc, plainLyrics } from './lyrics';
-import { findLocalTrackByFingerprint, putLocalTrack } from './library';
+import { attachTranslationTrack, chooseLyrics, foldBilingualTimedLines, isLyricCreditLine, parseLrc, plainLyrics } from './lyrics';
+import { findLocalTrackByFingerprint, putLocalTrack, replaceLocalTrackLyrics } from './library';
 import type {
   ImportItemResult, ImportSummary, LocalAudioExtension, LocalMediaRecord,
-  LyricsDocument, PlaybackCapability, TrackMetadata,
+  LocalMediaSource, LyricsDocument, PlaybackCapability, TrackMetadata, WebFileSystemFileHandle,
 } from './types';
 import { LOCAL_AUDIO_EXTENSIONS } from './types';
 
@@ -47,20 +47,133 @@ export async function stableFileFingerprint(file: Pick<File, 'size' | 'slice'>):
   return [...digest].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function normalizedEmbeddedLyrics(tags: ILyricsTag[] | undefined): { synced: LyricsDocument; plain: LyricsDocument } {
-  const syncedTag = tags?.find(tag => tag.timeStampFormat === TimestampFormat.milliseconds && tag.syncText?.some(line => Number.isFinite(line.timestamp)));
-  const syncedLines: Array<{ timeMs: number; endTimeMs?: number; text: string }> = (syncedTag?.syncText || [])
+const TRANSLATION_DESCRIPTOR = /(?:translation|translated|\btrans\b|翻译|译文|中文翻译)/i;
+const PRIMARY_DESCRIPTOR = /(?:original|\borig\b|\bmain\b|原文|原歌词|主歌词)/i;
+
+const descriptorOf = (tag: ILyricsTag): string => `${tag.descriptor || ''} ${tag.language || ''}`.trim();
+const isTranslationTag = (tag: ILyricsTag): boolean => TRANSLATION_DESCRIPTOR.test(descriptorOf(tag));
+const isPrimaryTag = (tag: ILyricsTag): boolean => PRIMARY_DESCRIPTOR.test(descriptorOf(tag));
+
+function syncedDocumentFromTag(tag: ILyricsTag | undefined, preferredLanguage?: string): LyricsDocument {
+  const syncedLines: Array<{ timeMs: number; endTimeMs?: number; text: string }> = (tag?.syncText || [])
     .filter(line => Number.isFinite(line.timestamp) && line.text?.trim())
     .map(line => ({ timeMs: Math.max(0, line.timestamp || 0), text: line.text.trim() }))
     .sort((a, b) => a.timeMs - b.timeMs);
-  for (let index = 0; index < syncedLines.length - 1; index += 1) syncedLines[index].endTimeMs = syncedLines[index + 1].timeMs;
-  const embeddedLrc = tags?.map(tag => tag.text || '').find(text => parseLrc(text).kind === 'synced');
-  const lrc = embeddedLrc ? parseLrc(embeddedLrc) : { kind: 'none', lines: [] } as LyricsDocument;
-  const synced: LyricsDocument = syncedLines.length
-    ? { kind: 'synced', source: 'embedded-synced', lines: syncedLines }
-    : lrc.kind === 'synced' ? { ...lrc, source: 'embedded-synced' } : { kind: 'none', lines: [] };
-  const plainText = tags?.map(tag => tag.text || '').find(text => text.trim() && parseLrc(text).kind !== 'synced') || '';
-  return { synced, plain: plainLyrics(plainText) };
+  if (syncedLines.length) return { kind: 'synced', source: 'embedded-synced', lines: foldBilingualTimedLines(syncedLines, preferredLanguage) };
+  const lrc = tag?.text ? parseLrc(tag.text) : { kind: 'none', lines: [] } as LyricsDocument;
+  return lrc.kind === 'synced' ? { ...lrc, source: 'embedded-synced' } : { kind: 'none', lines: [] };
+}
+
+export interface LyricNormalizationDiagnostic {
+  trackCount: number;
+  tracks: Array<{
+    index: number; descriptor: string; language: string; contentType: number; timeStampFormat: number;
+    synchronized: boolean; plain: boolean;
+    lineCount: number; creditLineCount: number; previews: string[];
+    primaryScore: number; translationScore: number; reasons: string[];
+  }>;
+  primaryTrackIndex: number | null;
+  translationTrackIndex: number | null;
+  primaryReason: string;
+  translationReason: string;
+}
+
+const shortPreview = (text: string): string => text.replace(/\s+/g, ' ').trim().slice(0, 48);
+const languageIdentity = (value?: string): string => {
+  const normalized = (value || '').trim().toLowerCase().replace(/_/g, '-').split('-')[0];
+  const aliases: Record<string, string> = {
+    en: 'eng', eng: 'eng', zh: 'zho', zho: 'zho', chi: 'zho', cmn: 'zho',
+    ko: 'kor', kor: 'kor', ja: 'jpn', jpn: 'jpn', fr: 'fra', fra: 'fra', fre: 'fra',
+    de: 'deu', deu: 'deu', ger: 'deu', es: 'spa', spa: 'spa', it: 'ita', ita: 'ita',
+  };
+  return aliases[normalized] || normalized;
+};
+const languageMatches = (left?: string, right?: string): boolean => !!languageIdentity(left)
+  && languageIdentity(left) === languageIdentity(right);
+
+export function normalizeEmbeddedLyrics(
+  tags: ILyricsTag[] | undefined,
+  options: { trackLanguage?: string } = {},
+): { synced: LyricsDocument; plain: LyricsDocument; diagnostic: LyricNormalizationDiagnostic } {
+  const all = tags || [];
+  const syncedTags = all.map((tag, sourceIndex) => ({ tag, sourceIndex })).filter(({ tag }) => (
+    (tag.timeStampFormat === TimestampFormat.milliseconds && tag.syncText?.some(line => Number.isFinite(line.timestamp)))
+    || (!!tag.text && parseLrc(tag.text).kind === 'synced')
+  ));
+  const analyses = syncedTags.map(({ tag, sourceIndex }, stableIndex) => {
+    // A SYLT frame's language identifies the frame, not necessarily the primary
+    // row inside bilingual same/near-timestamp content. Only file-level language
+    // is strong enough to reorder rows within a mixed frame.
+    const document = syncedDocumentFromTag(tag, options.trackLanguage);
+    const lines = document.lines;
+    const nonCreditCount = lines.filter(line => !isLyricCreditLine(line.text)).length;
+    const reasons: string[] = [];
+    let primaryScore = -stableIndex / 1000;
+    let translationScore = -stableIndex / 1000;
+    if (isPrimaryTag(tag)) { primaryScore += 1000; translationScore -= 1000; reasons.push('explicit-primary-descriptor'); }
+    if (isTranslationTag(tag)) { primaryScore -= 1000; translationScore += 1000; reasons.push('explicit-translation-descriptor'); }
+    if (languageMatches(tag.language, options.trackLanguage)) { primaryScore += 200; reasons.push('matches-track-language'); }
+    if (lines.length > 0) {
+      const creditRatio = (lines.length - nonCreditCount) / lines.length;
+      primaryScore += Math.min(nonCreditCount, 100) / 100;
+      primaryScore -= creditRatio * 100;
+      if (creditRatio > 0) reasons.push('credit-rows-excluded-from-pairing');
+      if (creditRatio >= 0.5) reasons.push('credit-heavy');
+    }
+    return { tag, sourceIndex, stableIndex, document, lines, nonCreditCount, primaryScore, translationScore, reasons };
+  });
+  const primaryAnalysis = [...analyses].sort((a, b) => b.primaryScore - a.primaryScore || a.stableIndex - b.stableIndex)[0];
+  const primaryTag = primaryAnalysis?.tag;
+  const primary = primaryAnalysis?.document || { kind: 'none', lines: [] } as LyricsDocument;
+  const translationCandidates = analyses.filter(item => item !== primaryAnalysis).map(item => {
+    const primaryTimed = primary.lines.filter(line => line.timeMs !== undefined && !isLyricCreditLine(line.text));
+    const translatedTimed = item.lines.filter(line => line.timeMs !== undefined && !isLyricCreditLine(line.text));
+    const paired = primaryTimed.filter(line => translatedTimed.some(candidate => Math.abs(candidate.timeMs! - line.timeMs!) <= 500)).length;
+    const overlap = primaryTimed.length ? paired / primaryTimed.length : 0;
+    item.translationScore += overlap * 100;
+    if (overlap >= 0.6) item.reasons.push('timestamp-overlap');
+    if (item.tag.language && primaryTag?.language && item.tag.language !== primaryTag.language) item.translationScore += 10;
+    return item;
+  });
+  const translationAnalysis = [...translationCandidates]
+    .filter(item => isTranslationTag(item.tag) || item.reasons.includes('timestamp-overlap'))
+    .sort((a, b) => b.translationScore - a.translationScore || a.stableIndex - b.stableIndex)[0];
+  const translationTag = translationAnalysis?.tag;
+  const translation = translationAnalysis?.document || { kind: 'none', lines: [] } as LyricsDocument;
+  const synced: LyricsDocument = translation.kind === 'synced'
+    ? attachTranslationTrack(primary, translation)
+    : primary;
+  const plainTag = all.find(tag => !isTranslationTag(tag) && tag.text?.trim() && parseLrc(tag.text).kind !== 'synced')
+    || all.find(tag => tag.text?.trim() && parseLrc(tag.text).kind !== 'synced');
+  const plain = plainLyrics(plainTag?.text || '');
+  const diagnostic: LyricNormalizationDiagnostic = {
+    trackCount: all.length,
+    tracks: all.map((tag, index) => {
+      const item = analyses.find(candidate => candidate.sourceIndex === index);
+      const plainDocument = tag.text ? parseLrc(tag.text) : { kind: 'none', lines: [] } as LyricsDocument;
+      const previewLines = item?.lines || (plainDocument.kind === 'none' ? plainLyrics(tag.text || '').lines : plainDocument.lines);
+      return {
+        index,
+        descriptor: tag.descriptor || '',
+        language: tag.language || '',
+        contentType: tag.contentType,
+        timeStampFormat: tag.timeStampFormat,
+        synchronized: item?.document.kind === 'synced',
+        plain: !!tag.text?.trim() && plainDocument.kind !== 'synced',
+        lineCount: previewLines.length,
+        creditLineCount: previewLines.filter(line => isLyricCreditLine(line.text)).length,
+        previews: previewLines.slice(0, 3).map(line => shortPreview(line.text)),
+        primaryScore: item?.primaryScore || 0,
+        translationScore: item?.translationScore || 0,
+        reasons: item?.reasons || [],
+      };
+    }),
+    primaryTrackIndex: primaryAnalysis?.sourceIndex ?? null,
+    translationTrackIndex: translationAnalysis?.sourceIndex ?? null,
+    primaryReason: primaryAnalysis?.reasons.join(',') || 'stable-source-order-fallback',
+    translationReason: translationAnalysis?.reasons.join(',') || (translationAnalysis ? 'stable-source-order-fallback' : 'none'),
+  };
+  return { synced, plain, diagnostic };
 }
 
 export function metadataFromParser(file: File, parsed: IAudioMetadata, id: string): TrackMetadata {
@@ -116,7 +229,12 @@ export function localRecordToSong(record: LocalMediaRecord) {
 
 export async function importLocalMediaFiles(
   files: File[],
-  options: { audio?: Pick<HTMLAudioElement, 'canPlayType'>; parse?: typeof parseBlob; now?: () => number } = {},
+  options: {
+    audio?: Pick<HTMLAudioElement, 'canPlayType'>;
+    parse?: typeof parseBlob;
+    now?: () => number;
+    sourceForFile?: (file: File) => LocalMediaSource | undefined;
+  } = {},
 ): Promise<ImportSummary> {
   const lrcFiles = new Map(files.filter(file => extensionOf(file.name) === 'lrc').map(file => [basenameOf(file.name), file]));
   const audioFiles = files.filter(file => extensionOf(file.name) !== 'lrc');
@@ -128,11 +246,13 @@ export async function importLocalMediaFiles(
       continue;
     }
     try {
-      const fingerprint = await stableFileFingerprint(file);
-      if (await findLocalTrackByFingerprint(fingerprint)) {
-        items.push({ filename: file.name, status: 'duplicate', message: '已在本地曲库中' });
+      const source = options.sourceForFile?.(file);
+      if (!source) {
+        items.push({ filename: file.name, status: 'failed', message: '当前选择方式不能持久保存原文件授权，未复制音频' });
         continue;
       }
+      const fingerprint = await stableFileFingerprint(file);
+      const existing = await findLocalTrackByFingerprint(fingerprint);
       let parsed: IAudioMetadata | null = null;
       let warning: string | undefined;
       try {
@@ -141,11 +261,25 @@ export async function importLocalMediaFiles(
         warning = error instanceof Error ? error.message : 'metadata parse failed';
       }
       const metadata = parsed ? metadataFromParser(file, parsed, fingerprint) : fallbackMetadata(file, fingerprint);
-      const embedded = normalizedEmbeddedLyrics(parsed?.common.lyrics);
+      const embedded = normalizeEmbeddedLyrics(parsed?.common.lyrics, { trackLanguage: parsed?.common.language });
+      if (import.meta.env.DEV && parsed?.common.lyrics?.length) {
+        console.debug('[LocalLyrics] sanitized normalization diagnostic', embedded.diagnostic);
+      }
       let external: LyricsDocument = { kind: 'none', lines: [] };
       const sidecar = lrcFiles.get(basenameOf(file.name));
       if (sidecar) {
         try { external = parseLrc(await sidecar.text()); } catch { /* batch isolation */ }
+      }
+      const selectedLyrics = chooseLyrics(embedded.synced, external, embedded.plain);
+      if (existing) {
+        // Re-import is an explicit user action. Refresh only normalized lyrics so
+        // records created by an older normalizer can be repaired without touching
+        // their source authorization, artwork, metadata, or audio lifecycle.
+        if (selectedLyrics.kind !== 'none') await replaceLocalTrackLyrics(existing.id, selectedLyrics);
+        items.push({ filename: file.name, status: 'duplicate', message: selectedLyrics.kind === 'none'
+          ? '已在本地曲库中'
+          : '已在本地曲库中，歌词已重新解析' });
+        continue;
       }
       const capability = playbackCapability(file, options.audio);
       if (!parsed && capability === 'unsupported') {
@@ -155,19 +289,19 @@ export async function importLocalMediaFiles(
       const { artwork, ...storedMetadata } = metadata;
       const artworkBytes = artwork ? artwork.data.slice().buffer as ArrayBuffer : undefined;
       const record: LocalMediaRecord = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: fingerprint,
         fingerprint,
         importedAt: (options.now || Date.now)(),
         metadata: storedMetadata,
         artworkBlob: artwork && artworkBytes ? new Blob([artworkBytes], { type: artwork.mimeType }) : undefined,
-        lyrics: chooseLyrics(embedded.synced, external, embedded.plain),
-        audioBlob: file.slice(0, file.size, file.type || MIME_BY_EXTENSION[ext][0]),
+        lyrics: selectedLyrics,
+        source,
         mimeType: file.type || MIME_BY_EXTENSION[ext][0],
         playbackCapability: capability,
         metadataStatus: parsed ? 'parsed' : 'fallback',
         metadataWarning: warning,
-        sourceLifecycle: 'app-owned-blob-copy',
+        sourceLifecycle: 'external-reference',
       };
       const stored = await putLocalTrack(record);
       items.push(stored === 'duplicate'
@@ -185,5 +319,33 @@ export async function importLocalMediaFiles(
     metadataFallback: items.filter(item => item.track?.metadataStatus === 'fallback').length,
     destructiveChanges: 0,
     items,
+  };
+}
+
+export async function importLocalMediaHandles(
+  handles: WebFileSystemFileHandle[],
+  options: Omit<Parameters<typeof importLocalMediaFiles>[1], 'sourceForFile'> = {},
+): Promise<ImportSummary> {
+  const selected: Array<{ handle: WebFileSystemFileHandle; file: File }> = [];
+  const inaccessible: ImportItemResult[] = [];
+  await Promise.all(handles.map(async handle => {
+    try {
+      selected.push({ handle, file: await handle.getFile() });
+    } catch {
+      inaccessible.push({ filename: handle.name, status: 'failed', message: '原文件不可访问，需要重新授权/重新定位' });
+    }
+  }));
+  const handleByFile = new Map(selected.map(item => [item.file, item.handle]));
+  const summary = await importLocalMediaFiles(selected.map(item => item.file), {
+    ...options,
+    sourceForFile: file => {
+      const handle = handleByFile.get(file);
+      return handle ? { kind: 'web-file-handle', handle } : undefined;
+    },
+  });
+  return {
+    ...summary,
+    failed: summary.failed + inaccessible.length,
+    items: [...summary.items, ...inaccessible],
   };
 }

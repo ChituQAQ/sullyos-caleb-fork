@@ -9,6 +9,7 @@ export interface PlaybackEngineEvents {
 
 export interface PlaybackEngine {
   readonly element: HTMLAudioElement;
+  readonly currentState: PlaybackEngineState;
   loadUrl(url: string): void;
   loadBlob(blob: Blob): void;
   play(): Promise<void>;
@@ -41,6 +42,8 @@ export class HtmlAudioPlaybackEngine implements PlaybackEngine {
   private objectUrl: string | null = null;
   private listeners = new Set<(events: PlaybackEngineEvents) => void>();
   private state: PlaybackEngineState = 'idle';
+  private desiredPlaying = false;
+  private playRequest = 0;
   private readonly handlers: Array<[string, EventListener]>;
 
   constructor(element: HTMLAudioElement = new Audio()) {
@@ -52,10 +55,12 @@ export class HtmlAudioPlaybackEngine implements PlaybackEngine {
     };
     this.handlers = [
       bind('loadstart', () => this.emit('loading')),
-      bind('play', () => this.emit('playing')),
-      bind('pause', () => this.emit('paused')),
-      bind('ended', () => this.emit('ended')),
-      bind('error', () => this.emit('error', this.element.error?.message || 'Audio playback failed')),
+      bind('play', () => {
+        if (!this.desiredPlaying) { this.element.pause(); return; }
+      }),
+      bind('pause', () => { this.desiredPlaying = false; this.playRequest += 1; this.emit('paused'); }),
+      bind('ended', () => { this.desiredPlaying = false; this.emit('ended'); }),
+      bind('error', () => { this.desiredPlaying = false; this.emit('error', this.element.error?.message || 'Audio playback failed'); }),
       bind('timeupdate', () => this.emit(this.state)),
       bind('loadedmetadata', () => this.emit(this.state === 'loading' ? 'paused' : this.state)),
     ];
@@ -72,12 +77,16 @@ export class HtmlAudioPlaybackEngine implements PlaybackEngine {
     this.listeners.forEach(listener => listener(event));
   }
 
+  get currentState() { return this.state; }
+
   private releaseObjectUrl() {
     if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
     this.objectUrl = null;
   }
 
   loadUrl(url: string) {
+    this.desiredPlaying = false;
+    this.playRequest += 1;
     this.element.pause();
     this.releaseObjectUrl();
     this.emit('loading');
@@ -85,6 +94,8 @@ export class HtmlAudioPlaybackEngine implements PlaybackEngine {
   }
 
   loadBlob(blob: Blob) {
+    this.desiredPlaying = false;
+    this.playRequest += 1;
     this.element.pause();
     this.releaseObjectUrl();
     this.objectUrl = URL.createObjectURL(blob);
@@ -92,12 +103,27 @@ export class HtmlAudioPlaybackEngine implements PlaybackEngine {
     this.element.src = this.objectUrl;
   }
 
-  play() { return this.element.play(); }
-  pause() { this.element.pause(); }
+  async play() {
+    this.desiredPlaying = true;
+    const request = ++this.playRequest;
+    try {
+      await this.element.play();
+      if (request === this.playRequest && this.desiredPlaying && !this.element.paused) this.emit('playing');
+    } catch (error) {
+      if (request === this.playRequest) {
+        this.desiredPlaying = false;
+        this.emit('error', error instanceof Error ? error.message : 'Audio playback failed');
+      }
+      throw error;
+    }
+  }
+  pause() { this.desiredPlaying = false; this.playRequest += 1; this.element.pause(); }
   seekSeconds(seconds: number) { this.element.currentTime = Math.max(0, Math.min(this.element.duration || seconds, seconds)); this.emit(this.state); }
   setVolume(volume: number) { this.element.volume = Math.max(0, Math.min(1, volume)); }
   subscribe(listener: (events: PlaybackEngineEvents) => void) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   dispose() {
+    this.desiredPlaying = false;
+    this.playRequest += 1;
     this.handlers.forEach(([event, handler]) => this.element.removeEventListener(event, handler));
     this.element.pause();
     this.element.removeAttribute('src');

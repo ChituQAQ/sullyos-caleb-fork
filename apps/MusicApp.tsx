@@ -13,10 +13,13 @@ import {
 } from './music/MusicUI';
 import NeteaseProfilePage from './music/NeteaseProfilePage';
 import CharVisitPage from './music/CharVisitPage';
-import { importLocalMediaFiles, localRecordToSong } from '../utils/localMusic/metadata';
-import { listLocalTracks, removeLocalTrack } from '../utils/localMusic/library';
-import type { ImportSummary, LocalMediaRecord } from '../utils/localMusic/types';
+import { importLocalMediaHandles, localRecordToSong, stableFileFingerprint } from '../utils/localMusic/metadata';
+import { listLocalMediaSourceRoots, listLocalTracks, removeLocalTrack, replaceLocalMediaDirectoryHandle, replaceLocalTrackWebHandle } from '../utils/localMusic/library';
+import type { ImportSummary, LocalMediaRecord, LocalMediaSourceRoot } from '../utils/localMusic/types';
 import { lyricSeekTargetSeconds } from '../utils/localMusic/lyrics';
+import { pickWebLocalMediaDirectory, pickWebLocalMediaHandles, resolveFileFromDirectoryHandle } from '../utils/localMusic/sourceResolver';
+import { importLocalMediaDirectory, type DirectoryImportProgress } from '../utils/localMusic/directoryImport';
+import { beginLyricBrowsing, commitTimedLyricSeek, followActiveLyric, returnToLyricFollowing, type LyricFollowMode } from '../utils/localMusic/lyricScroll';
 
 // ------------------------- 工具 -------------------------
 const fmtTime = (s: number) => {
@@ -41,7 +44,6 @@ const MusicApp: React.FC = () => {
     addLocalSong, removeLocalSong, localAlbumSongs,
     playMode, setPlayMode,
     regeneratingId, regeneratingStatus,
-    volume, setVolume, togetherListeningEnabled, setTogetherListeningEnabled,
   } = useMusic();
   const isCurrentRegenerating = !!current && current.id === regeneratingId;
   // 把对轴入口和单曲循环按钮移到 SubActions 里，避免散乱
@@ -102,7 +104,7 @@ const MusicApp: React.FC = () => {
   // 把 OS toast 注入到 Music Context（这样全局播放报错也能弹 toast）
   useEffect(() => { setToastHandler(addToast); }, [addToast, setToastHandler]);
 
-  const [view, setView] = useState<View>('profile');
+  const [view, setView] = useState<View>('search');
   // ── 手动对轴 modal state ──
   const [showLyricSync, setShowLyricSync] = useState(false);
   const [syncDraft, setSyncDraft] = useState<number[]>([]);
@@ -111,62 +113,96 @@ const MusicApp: React.FC = () => {
   const [results, setResults] = useState<Song[]>([]);
   const [searching, setSearching] = useState(false);
   const lyricBoxRef = useRef<HTMLDivElement | null>(null);
-  const localInputRef = useRef<HTMLInputElement | null>(null);
-  const autoFollowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [autoFollowLyrics, setAutoFollowLyrics] = useState(true);
+  const [lyricFollowMode, setLyricFollowMode] = useState<LyricFollowMode>('following');
+  const lyricFollowModeRef = useRef<LyricFollowMode>('following');
+  const programmaticLyricScrollTargetRef = useRef<number | null>(null);
   const [localTracks, setLocalTracks] = useState<LocalMediaRecord[]>([]);
+  const [localSourceRoots, setLocalSourceRoots] = useState<LocalMediaSourceRoot[]>([]);
   const [importingLocal, setImportingLocal] = useState(false);
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
+  const [directoryProgress, setDirectoryProgress] = useState<DirectoryImportProgress | null>(null);
 
   const refreshLocalLibrary = useCallback(async () => {
-    try { setLocalTracks(await listLocalTracks()); }
+    try {
+      const [tracks, roots] = await Promise.all([listLocalTracks(), listLocalMediaSourceRoots()]);
+      setLocalTracks(tracks);
+      setLocalSourceRoots(roots);
+    }
     catch (error: any) { addToast(`读取本地曲库失败：${error?.message || 'unknown error'}`, 'error'); }
   }, [addToast]);
 
   useEffect(() => { void refreshLocalLibrary(); }, [refreshLocalLibrary]);
 
-  useEffect(() => () => {
-    if (autoFollowTimerRef.current) clearTimeout(autoFollowTimerRef.current);
-  }, []);
-
-  const suspendAutoFollow = useCallback(() => {
-    setAutoFollowLyrics(false);
-    if (autoFollowTimerRef.current) clearTimeout(autoFollowTimerRef.current);
-    autoFollowTimerRef.current = setTimeout(() => setAutoFollowLyrics(true), 5000);
-  }, []);
-
   const resumeAutoFollow = useCallback(() => {
-    if (autoFollowTimerRef.current) clearTimeout(autoFollowTimerRef.current);
-    setAutoFollowLyrics(true);
+    const mode = returnToLyricFollowing();
+    lyricFollowModeRef.current = mode;
+    setLyricFollowMode(mode);
   }, []);
+
+  useEffect(() => {
+    lyricFollowModeRef.current = 'following';
+    setLyricFollowMode('following');
+  }, [current?.id]);
+
+  const enterLyricBrowseMode = useCallback(() => {
+    programmaticLyricScrollTargetRef.current = null;
+    const mode = beginLyricBrowsing();
+    lyricFollowModeRef.current = mode;
+    setLyricFollowMode(mode);
+  }, []);
+
+  const commitLyricSeek = useCallback((index: number) => {
+    const line = lyric[index];
+    if (!line) return;
+    const target = lyricSeekTargetSeconds({ text: line.text, timeMs: line.t === undefined ? undefined : line.t * 1000 });
+    if (target === null) return;
+    lyricFollowModeRef.current = commitTimedLyricSeek(target, seekSeconds);
+    resumeAutoFollow();
+  }, [lyric, resumeAutoFollow, seekSeconds]);
 
   // 歌词自动滚动：把 current line 对齐到滚动容器视觉中心
   // 注意 offsetTop 依赖 offsetParent，容器没 position:relative 时会跨到祖先节点、值偏大，
   // 导致 current line 被推到中心上方。改用 getBoundingClientRect 对齐，和 DOM 嵌套解耦。
   useEffect(() => {
-    if (view !== 'player' || !autoFollowLyrics || lyricsKind !== 'synced') return;
+    if (view !== 'player' || lyricFollowModeRef.current !== 'following' || lyricsKind !== 'synced') return;
     const box = lyricBoxRef.current; if (!box || activeLyricIdx < 0) return;
     const el = box.querySelector<HTMLDivElement>(`[data-lyric-idx="${activeLyricIdx}"]`);
     if (!el) return;
-    const boxRect = box.getBoundingClientRect();
-    const elRect = el.getBoundingClientRect();
-    const elTopInBox = elRect.top - boxRect.top + box.scrollTop;
-    box.scrollTo({ top: elTopInBox - box.clientHeight / 2 + el.clientHeight / 2, behavior: 'smooth' });
-  }, [activeLyricIdx, view, autoFollowLyrics, lyricsKind]);
+    programmaticLyricScrollTargetRef.current = followActiveLyric('following', box, el);
+  }, [activeLyricIdx, view, lyricFollowMode, lyricsKind]);
 
-  const handleLocalImport = useCallback(async (files: FileList | null) => {
-    if (!files?.length) return;
+  const handleLocalImport = useCallback(async () => {
     setImportingLocal(true);
     try {
-      const summary = await importLocalMediaFiles(Array.from(files));
+      const handles = await pickWebLocalMediaHandles();
+      if (!handles.length) return;
+      const summary = await importLocalMediaHandles(handles);
       setImportSummary(summary);
       await refreshLocalLibrary();
       addToast(`${summary.imported} 首已导入 · ${summary.duplicates} 首重复 · ${summary.unsupported + summary.failed} 首未导入`, summary.failed ? 'error' : 'success');
     } catch (error: any) {
+      if (error?.name === 'AbortError') return;
       addToast(`导入失败：${error?.message || 'unknown error'}`, 'error');
     } finally {
       setImportingLocal(false);
-      if (localInputRef.current) localInputRef.current.value = '';
+    }
+  }, [addToast, refreshLocalLibrary]);
+
+  const handleDirectoryImport = useCallback(async () => {
+    setImportingLocal(true);
+    setDirectoryProgress({ phase: 'scanning', discovered: 0, processed: 0 });
+    try {
+      const handle = await pickWebLocalMediaDirectory();
+      const { summary } = await importLocalMediaDirectory(handle, { onProgress: setDirectoryProgress });
+      setImportSummary(summary);
+      await refreshLocalLibrary();
+      addToast(`${summary.imported} 首已导入 · ${summary.duplicates} 首重复 · ${summary.failed} 首失败`, summary.failed ? 'error' : 'success');
+    } catch (error: any) {
+      if (error?.name === 'AbortError') return;
+      addToast(`文件夹导入失败：${error?.message || 'unknown error'}`, 'error');
+    } finally {
+      setImportingLocal(false);
+      setDirectoryProgress(null);
     }
   }, [addToast, refreshLocalLibrary]);
 
@@ -188,6 +224,46 @@ const MusicApp: React.FC = () => {
       addToast(`移除失败：${error?.message || 'unknown error'}`, 'error');
     }
   }, [addToast, refreshLocalLibrary]);
+
+  const relinkLocalTrack = useCallback(async (record: LocalMediaRecord) => {
+    if (record.schemaVersion !== 2) return;
+    try {
+      const [handle] = await pickWebLocalMediaHandles({ multiple: false });
+      if (!handle) return;
+      const file = await handle.getFile();
+      if (await stableFileFingerprint(file) !== record.fingerprint) {
+        addToast('所选文件与原曲目不一致，请选择同一个音频文件', 'error');
+        return;
+      }
+      await replaceLocalTrackWebHandle(record.id, handle);
+      await refreshLocalLibrary();
+      addToast('原文件授权已更新', 'success');
+    } catch (error: any) {
+      if (error?.name === 'AbortError') return;
+      addToast(`重新授权失败：${error?.message || 'unknown error'}`, 'error');
+    }
+  }, [addToast, refreshLocalLibrary]);
+
+  const relinkDirectoryRoot = useCallback(async (root: LocalMediaSourceRoot) => {
+    try {
+      const handle = await pickWebLocalMediaDirectory();
+      const sample = localTracks.find(record => record.schemaVersion === 2
+        && record.source.kind === 'web-directory-relative' && record.source.rootId === root.id);
+      if (sample?.schemaVersion === 2 && sample.source.kind === 'web-directory-relative') {
+        const file = await resolveFileFromDirectoryHandle(handle, sample.source.relativePath);
+        if (await stableFileFingerprint(file) !== sample.fingerprint) {
+          addToast('所选文件夹与原音乐来源不一致', 'error');
+          return;
+        }
+      }
+      await replaceLocalMediaDirectoryHandle(root.id, handle);
+      await refreshLocalLibrary();
+      addToast(`已重新授权音乐文件夹：${root.name}`, 'success');
+    } catch (error: any) {
+      if (error?.name === 'AbortError') return;
+      addToast(`文件夹重新授权失败：${error?.message || 'unknown error'}`, 'error');
+    }
+  }, [addToast, localTracks, refreshLocalLibrary]);
 
   // ── 搜索 ──
   const doSearch = useCallback(async () => {
@@ -339,25 +415,42 @@ const MusicApp: React.FC = () => {
         <MizuHeader
           title="Local Music"
           onBack={() => setView('search')}
-          right={<button onClick={() => localInputRef.current?.click()} disabled={importingLocal} className="p-1.5 rounded-full" style={{ color: C.primary }} title="导入音乐"><UploadSimple size={17} weight="bold" /></button>}
-        />
-        <input
-          ref={localInputRef}
-          type="file"
-          className="hidden"
-          multiple
-          accept=".mp3,.wav,.flac,.m4a,.aac,.ogg,.mp4,.lrc,audio/*,video/mp4,text/plain"
-          onChange={event => void handleLocalImport(event.currentTarget.files)}
+          right={<button onClick={() => void handleLocalImport()} disabled={importingLocal} className="p-1.5 rounded-full" style={{ color: C.primary }} title="导入音乐"><UploadSimple size={17} weight="bold" /></button>}
         />
         <div className="relative z-10 px-4 pt-3">
-          <button onClick={() => localInputRef.current?.click()} disabled={importingLocal}
-            className="w-full rounded-2xl py-3 text-xs text-white flex items-center justify-center gap-2 disabled:opacity-60"
-            style={{ background: `linear-gradient(135deg, ${C.primary}, ${C.accent})`, boxShadow: `0 3px 18px ${C.glow}35` }}>
-            <UploadSimple size={16} /> {importingLocal ? '正在本机解析…' : '导入本地音乐 / LRC'}
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => void handleDirectoryImport()} disabled={importingLocal}
+              className="rounded-2xl py-3 text-xs text-white flex items-center justify-center gap-2 disabled:opacity-60"
+              style={{ background: `linear-gradient(135deg, ${C.primary}, ${C.accent})`, boxShadow: `0 3px 18px ${C.glow}35` }}>
+              <FolderOpen size={16} /> 导入音乐文件夹
+            </button>
+            <button onClick={() => void handleLocalImport()} disabled={importingLocal}
+              className="rounded-2xl py-3 text-xs flex items-center justify-center gap-2 disabled:opacity-60 shizuku-glass"
+              style={{ color: C.primary }}>
+              <UploadSimple size={16} /> 导入单曲 / LRC
+            </button>
+          </div>
           <p className="text-[9px] mt-2 leading-relaxed" style={{ color: C.muted }}>
-            文件会复制到 SullyOS 专用本地存储，不上传、不改写原文件，也不进入官方备份。可一次选择同名歌曲与 .lrc。
+            文件夹模式只需重新授权一个来源，适合大型曲库；单曲句柄在浏览器重启后可能需要逐首重新授权。两种模式都不复制完整音频、不上传、不改写原文件。
           </p>
+          {directoryProgress && (
+            <div className="mt-2 text-[10px]" style={{ color: C.primary }}>
+              {directoryProgress.phase === 'scanning'
+                ? `正在扫描文件夹… 已发现 ${directoryProgress.discovered} 个音乐/歌词文件`
+                : `正在解析曲库… ${directoryProgress.processed}/${directoryProgress.total || directoryProgress.discovered}`}
+              {directoryProgress.current && <div className="truncate opacity-70">{directoryProgress.current}</div>}
+            </div>
+          )}
+          {localSourceRoots.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {localSourceRoots.map(root => (
+                <button key={root.id} onClick={() => void relinkDirectoryRoot(root)} disabled={importingLocal}
+                  className="rounded-full px-2.5 py-1 text-[9px] shizuku-glass" style={{ color: C.muted }}>
+                  重新授权音乐文件夹 · {root.name}
+                </button>
+              ))}
+            </div>
+          )}
           {importSummary && (
             <div className="mt-2 rounded-xl px-3 py-2 text-[10px] shizuku-glass" style={{ color: C.primary }}>
               {importSummary.imported} imported · {importSummary.duplicates} duplicate · {importSummary.unsupported} unsupported · {importSummary.failed} failed
@@ -388,7 +481,10 @@ const MusicApp: React.FC = () => {
                     {record.metadataStatus === 'fallback' && <span style={{ color: C.vip }}>filename metadata</span>}
                   </div>
                 </button>
-                <button onClick={() => void deleteLocalTrack(record)} className="p-2 rounded-full" style={{ color: C.faint }} aria-label={`从曲库移除 ${song.name}`} title="仅移除 app 内副本"><Trash size={14} /></button>
+                {record.schemaVersion === 2 && record.source.kind === 'web-file-handle' && (
+                  <button onClick={() => void relinkLocalTrack(record)} className="p-2 rounded-full" style={{ color: C.faint }} aria-label={`重新授权或定位 ${song.name}`} title="重新授权 / 重新定位原文件"><FolderOpen size={14} /></button>
+                )}
+                <button onClick={() => void deleteLocalTrack(record)} className="p-2 rounded-full" style={{ color: C.faint }} aria-label={`从曲库移除 ${song.name}`} title="仅移除曲库记录，不删除原文件"><Trash size={14} /></button>
               </div>
             );
           })}
@@ -418,9 +514,9 @@ const MusicApp: React.FC = () => {
         <BokehBg />
         <MizuHeader title="Now Playing" onBack={() => setView(current.localLibraryTrackId ? 'local' : 'search')} />
 
-        <div className="flex-1 flex flex-col items-center px-5 pt-4 pb-3 relative z-10 overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col items-center px-5 pt-4 pb-3 relative z-10 overflow-hidden">
           <div className="shrink-0 mt-1 relative">
-            <VinylDisc albumPic={current.albumPic} playing={playing} size={150} bitrate={bitrateMap[cfg.quality]} />
+            <VinylDisc albumPic={current.albumPic} playing={playing} size={150} bitrate={bitrateMap[cfg.quality]} fullArtwork={!!current.localLibraryTrackId} />
             {/* 重录中覆盖层 — 只在本地歌且 regeneratingId 匹配时显示 */}
             {isCurrentRegenerating && (
               <div className="absolute inset-0 rounded-full flex items-center justify-center pointer-events-none"
@@ -477,27 +573,29 @@ const MusicApp: React.FC = () => {
             )}
           </section>
 
-          {current.localLibraryTrackId && (
-            <button
-              onClick={() => setTogetherListeningEnabled(!togetherListeningEnabled)}
-              className="mt-2 px-3 py-2 rounded-2xl text-[10px] text-left w-full max-w-sm shizuku-glass"
-              style={{ color: togetherListeningEnabled ? C.primary : C.muted, border: `1px solid ${togetherListeningEnabled ? C.sakura + '70' : C.faint + '35'}` }}
-              aria-pressed={togetherListeningEnabled}
-            >
-              <span className="font-semibold">{togetherListeningEnabled ? '✓ 和夏以昼一起听' : '和夏以昼一起听'}</span>
-              <span className="block mt-0.5 opacity-75">{togetherListeningEnabled ? '只在你发消息时共享歌名、歌手、专辑和播放状态' : '关闭时不会把本地播放信息加入 AI 上下文'}</span>
-            </button>
-          )}
-
+          {/* A positioned wrapper gives the native scroller a definite flex-constrained
+              height. Keep scroll detection O(1): measuring every row during onScroll
+              forced synchronous layout on every wheel/touch frame and made real
+              long lyric documents effectively unscrollable. */}
+          <div className="relative isolate flex-1 min-h-0 w-full my-3">
           <div
             ref={lyricBoxRef}
-            onWheel={suspendAutoFollow}
-            onTouchMove={suspendAutoFollow}
-            onPointerDown={suspendAutoFollow}
-            className="flex-1 w-full my-3 min-h-0 overflow-y-auto text-center scroll-smooth shizuku-scrollbar px-2"
+            onWheel={enterLyricBrowseMode}
+            onTouchStart={enterLyricBrowseMode}
+            onPointerDown={enterLyricBrowseMode}
+            onScroll={() => {
+              const target = programmaticLyricScrollTargetRef.current;
+              if (target !== null && Math.abs(lyricBoxRef.current!.scrollTop - target) <= 1) {
+                programmaticLyricScrollTargetRef.current = null;
+                return;
+              }
+              if (lyricFollowModeRef.current !== 'browsing') enterLyricBrowseMode();
+            }}
+            className="absolute inset-0 overflow-y-scroll pointer-events-auto text-center shizuku-scrollbar px-2"
             style={{
-              maskImage: 'linear-gradient(to bottom, transparent, black 18%, black 82%, transparent)',
-              WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 18%, black 82%, transparent)',
+              touchAction: 'pan-y',
+              overscrollBehaviorY: 'contain',
+              WebkitOverflowScrolling: 'touch',
             }}
           >
             {lyric.length === 0 ? (
@@ -508,27 +606,25 @@ const MusicApp: React.FC = () => {
                 </span>
               </div>
             ) : (
-              <div className="space-y-4 py-8">
+              <div className="flex w-full flex-col items-center gap-4 py-[30vh]">
                 {lyric.map((l, i) => {
                   const tr = tlyric.find(t => t.t !== undefined && l.t !== undefined && Math.abs(t.t - l.t) < 0.2);
+                  const translationText = l.translationText || tr?.text;
                   const active = i === activeLyricIdx;
                   // 关键：字号 / 字重不随 active 变 —— 变了会触发重排换行。
                   //     只让外层盒子用 transform:scale 视觉放大，不动内部文字度量。
                   return (
                     <button key={i} data-lyric-idx={i}
                       type="button"
-                      disabled={lyricsKind !== 'synced' || l.t === undefined}
-                      onClick={() => {
-                        const target = lyricSeekTargetSeconds({ text: l.text, timeMs: l.t === undefined ? undefined : l.t * 1000 });
-                        if (target !== null) { seekSeconds(target); resumeAutoFollow(); }
-                      }}
-                      className="transition-transform duration-300 will-change-transform"
+                      aria-disabled={lyricsKind !== 'synced' || l.t === undefined}
+                      onClick={() => commitLyricSeek(i)}
+                      className="block w-full max-w-2xl px-2 transition-transform duration-300 will-change-transform"
                       style={{
                         transform: active ? 'scale(1.05)' : 'scale(1)',
                         transformOrigin: 'center center',
                         opacity: active ? 1 : 0.45,
                       }}>
-                      <div className="flex items-center justify-center gap-2 px-3">
+                      <div className="grid w-full grid-cols-[12px_minmax(0,1fr)_12px] items-center gap-2 px-3">
                         <CrossStar
                           size={12}
                           color={C.sakura}
@@ -537,7 +633,7 @@ const MusicApp: React.FC = () => {
                           className={active ? '' : 'opacity-0'}
                         />
                         <div
-                          className="text-[16px] leading-[1.4]"
+                          className="min-w-0 whitespace-normal text-center text-[16px] leading-[1.4]"
                           style={{
                             fontFamily: `'Noto Serif','Georgia',serif`,
                             fontWeight: 400,
@@ -565,9 +661,9 @@ const MusicApp: React.FC = () => {
                           className={active ? '' : 'opacity-0'}
                         />
                       </div>
-                      {tr && (
+                      {translationText && (
                         <div
-                          className="text-[12px] leading-[1.4] mt-1 px-3"
+                          className="mx-auto mt-1 max-w-xl whitespace-normal px-3 text-center text-[12px] leading-[1.4]"
                           style={{
                             fontWeight: 400,
                             maxWidth: '100%',
@@ -576,7 +672,7 @@ const MusicApp: React.FC = () => {
                             color: active ? C.accent : C.faint,
                           }}
                         >
-                          {tr.text}
+                          {translationText}
                         </div>
                       )}
                     </button>
@@ -585,10 +681,13 @@ const MusicApp: React.FC = () => {
               </div>
             )}
           </div>
-          {!autoFollowLyrics && lyricsKind === 'synced' && (
-            <button onClick={resumeAutoFollow} className="shrink-0 mb-2 px-3 py-1.5 rounded-full text-[10px] shizuku-glass" style={{ color: C.primary }}>
-              回到当前歌词
-            </button>
+          </div>
+          {lyricFollowMode === 'browsing' && lyricsKind === 'synced' && (
+            <div className="shrink-0 mb-2 flex items-center gap-2">
+              <button onClick={resumeAutoFollow} className="px-3 py-1.5 rounded-full text-[10px] shizuku-glass" style={{ color: C.primary }}>
+                回到当前歌词
+              </button>
+            </div>
           )}
 
           <div className="w-full shrink-0 max-w-sm">
@@ -597,10 +696,6 @@ const MusicApp: React.FC = () => {
               <MetaChip>{fmtTime(duration)}</MetaChip>
             </div>
             <GlassProgress progress={progress} duration={duration} fmtTime={fmtTime} onSeek={seek} />
-            <label className="mt-2 flex items-center gap-2 text-[9px]" style={{ color: C.muted }}>
-              音量
-              <input aria-label="音量" type="range" min="0" max="1" step="0.05" value={volume} onChange={event => setVolume(Number(event.target.value))} className="flex-1" />
-            </label>
           </div>
 
           <div className="shrink-0 relative">
@@ -744,7 +839,7 @@ const MusicApp: React.FC = () => {
       {view === 'settings' && renderSettings()}
       {view === 'profile' && (
         <NeteaseProfilePage
-          onBack={closeApp}
+          onBack={() => setView('search')}
           onOpenPlayer={() => setView('player')}
           onOpenSearch={() => setView('search')}
           onOpenSettings={() => setView('settings')}

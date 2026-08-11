@@ -13,6 +13,23 @@ import McdCard from './McdCard';
 import HtmlCard from './HtmlCard';
 import LuckinCard from './LuckinCard';
 import LuckinCheckoutCard from './LuckinCheckoutCard';
+import { useBlobRefUrl } from '../../utils/blobRef';
+
+const MusicCardArtwork: React.FC<{ value?: string }> = ({ value }) => {
+    const resolved = useBlobRefUrl(value);
+    const [failed, setFailed] = useState(false);
+    useEffect(() => setFailed(false), [resolved]);
+    if (!resolved || failed) {
+        return (
+            <div className="music-cover-fallback w-full h-full flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #8b7ab8 0%, #6b95c7 100%)' }}>
+                <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: '28px' }}>♪</span>
+            </div>
+        );
+    }
+    return <img src={resolved} alt="" className="w-full h-full object-cover" loading="lazy"
+        referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
+};
 
 // 思考链卡片支持的 12 种风格预设 — 同时被 MessageItem 与 ThinkingChainSettingsModal 复用
 export type ThinkingChainStyleId = 'echo' | 'whisper' | 'minimal' | 'ink' | 'neon' | 'terminal' | 'stellar' | 'tama' | 'pixel' | 'muji' | 'ins' | 'custom';
@@ -2111,32 +2128,7 @@ const MessageItem = React.memo(({
 
                 {/* Cover */}
                 <div className="relative w-full h-28 overflow-hidden">
-                    {song.albumPic ? (
-                        <img
-                            src={song.albumPic}
-                            alt=""
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                            referrerPolicy="no-referrer"
-                            onError={(e: any) => {
-                                const img = e.target;
-                                const container = img.parentElement;
-                                if (!container) return;
-                                img.style.display = 'none';
-                                if (container.querySelector('.music-cover-fallback')) return;
-                                const fallback = document.createElement('div');
-                                fallback.className = 'music-cover-fallback w-full h-full flex items-center justify-center';
-                                fallback.style.background = 'linear-gradient(135deg, #8b7ab8 0%, #6b95c7 100%)';
-                                fallback.innerHTML = `<div style="color:rgba(255,255,255,0.9);font-size:24px;">♪</div>`;
-                                container.appendChild(fallback);
-                            }}
-                        />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center"
-                            style={{ background: 'linear-gradient(135deg, #8b7ab8 0%, #6b95c7 100%)' }}>
-                            <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: '28px' }}>♪</span>
-                        </div>
-                    )}
+                    <MusicCardArtwork value={song.albumPic} />
                     {/* 纯"收入歌单"保留角标；一起听意图已在头部表达，不再重复 */}
                     {!isTogether && (
                         <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full backdrop-blur-sm text-[9px] font-medium"

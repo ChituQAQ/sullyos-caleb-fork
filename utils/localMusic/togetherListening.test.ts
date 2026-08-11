@@ -11,7 +11,7 @@ describe('local Together Listening privacy bridge', () => {
     expect(nowPlaying).toMatchObject({ durationMs: 245500, positionMs: 12250, isPlaying: true, source: 'local' });
   });
 
-  it('returns no context while disabled', () => {
+  it('returns no context when no local track is current', () => {
     expect(getTogetherListeningContext(false, nowPlaying)).toBeNull();
   });
 

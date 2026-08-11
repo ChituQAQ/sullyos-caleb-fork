@@ -1,8 +1,10 @@
-import type { LocalMediaRecord } from './types';
+import type { LocalMediaRecord, LocalMediaSourceRoot, LyricsDocument, WebFileSystemDirectoryHandle, WebFileSystemFileHandle } from './types';
+import { resolveLocalMediaRecord } from './sourceResolver';
 
 const DB_NAME = 'xiafork_local_media';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const TRACK_STORE = 'xiafork_tracks';
+const SOURCE_ROOT_STORE = 'xiafork_source_roots';
 let connection: Promise<IDBDatabase> | null = null;
 
 export function openLocalMediaDB(): Promise<IDBDatabase> {
@@ -15,6 +17,10 @@ export function openLocalMediaDB(): Promise<IDBDatabase> {
         const store = db.createObjectStore(TRACK_STORE, { keyPath: 'id' });
         store.createIndex('fingerprint', 'fingerprint', { unique: true });
         store.createIndex('importedAt', 'importedAt');
+      }
+      if (!db.objectStoreNames.contains(SOURCE_ROOT_STORE)) {
+        const roots = db.createObjectStore(SOURCE_ROOT_STORE, { keyPath: 'id' });
+        roots.createIndex('importedAt', 'importedAt');
       }
     };
     request.onsuccess = () => {
@@ -94,7 +100,11 @@ export async function getLocalTrack(id: string): Promise<LocalMediaRecord | null
 }
 
 export async function getLocalTrackBlob(id: string): Promise<Blob | null> {
-  return (await getLocalTrack(id))?.audioBlob || null;
+  const record = await getLocalTrack(id);
+  return record ? resolveLocalMediaRecord(record, {
+    requestPermission: true,
+    getDirectoryRoot: getLocalMediaSourceRoot,
+  }) : null;
 }
 
 export async function getLocalArtworkBlob(id: string): Promise<Blob | null> {
@@ -106,6 +116,50 @@ export async function removeLocalTrack(id: string): Promise<void> {
   const tx = db.transaction(TRACK_STORE, 'readwrite');
   tx.objectStore(TRACK_STORE).delete(id);
   await transactionDone(tx);
+}
+
+export async function replaceLocalTrackWebHandle(id: string, handle: WebFileSystemFileHandle): Promise<void> {
+  const record = await getLocalTrack(id);
+  if (!record || record.schemaVersion !== 2) throw new Error('只能为引用模式曲目重新授权');
+  const db = await openLocalMediaDB();
+  const tx = db.transaction(TRACK_STORE, 'readwrite');
+  tx.objectStore(TRACK_STORE).put({ ...record, source: { kind: 'web-file-handle', handle } });
+  await transactionDone(tx);
+}
+
+/** Explicit same-file re-import repair path for normalization changes. */
+export async function replaceLocalTrackLyrics(id: string, lyrics: LyricsDocument): Promise<void> {
+  const record = await getLocalTrack(id);
+  if (!record) throw new Error('找不到本地曲目');
+  const db = await openLocalMediaDB();
+  const tx = db.transaction(TRACK_STORE, 'readwrite');
+  tx.objectStore(TRACK_STORE).put({ ...record, lyrics });
+  await transactionDone(tx);
+}
+
+export async function putLocalMediaSourceRoot(root: LocalMediaSourceRoot): Promise<void> {
+  const db = await openLocalMediaDB();
+  const tx = db.transaction(SOURCE_ROOT_STORE, 'readwrite');
+  tx.objectStore(SOURCE_ROOT_STORE).put(root);
+  await transactionDone(tx);
+}
+
+export async function getLocalMediaSourceRoot(id: string): Promise<LocalMediaSourceRoot | null> {
+  const db = await openLocalMediaDB();
+  const tx = db.transaction(SOURCE_ROOT_STORE, 'readonly');
+  return (await requestResult(tx.objectStore(SOURCE_ROOT_STORE).get(id))) || null;
+}
+
+export async function listLocalMediaSourceRoots(): Promise<LocalMediaSourceRoot[]> {
+  const db = await openLocalMediaDB();
+  const tx = db.transaction(SOURCE_ROOT_STORE, 'readonly');
+  return await requestResult(tx.objectStore(SOURCE_ROOT_STORE).getAll()) as LocalMediaSourceRoot[];
+}
+
+export async function replaceLocalMediaDirectoryHandle(id: string, handle: WebFileSystemDirectoryHandle): Promise<void> {
+  const root = await getLocalMediaSourceRoot(id);
+  if (!root) throw new Error('找不到音乐文件夹来源');
+  await putLocalMediaSourceRoot({ ...root, name: handle.name, handle });
 }
 
 export const LOCAL_ARTWORK_PREFIX = 'xiafork-local-artwork:';
